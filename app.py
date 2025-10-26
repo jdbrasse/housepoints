@@ -191,6 +191,38 @@ if uploaded_file is not None:
         excel_bytes = to_excel_bytes(aggregates)
         st.download_button("Download weekly Excel summary", data=excel_bytes,
                            file_name=f"weekly_summary_{week_label}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+# Value Frequency Chart — House vs Conduct Points
+
+st.subheader("Value Frequency — House vs Conduct Points")
+
+# Prepare frequency data
+house_freq = aggregates["raw_house_df"].groupby("Value")["Points"].count().reset_index()
+house_freq.rename(columns={"Points":"House Count"}, inplace=True)
+house_freq["Category"] = "House Points"
+
+conduct_freq = aggregates["raw_conduct_df"].groupby("Value")["Points"].count().reset_index()
+conduct_freq.rename(columns={"Points":"Conduct Count"}, inplace=True)
+conduct_freq["Category"] = "Conduct Points"
+
+# Standardize column names
+house_freq = house_freq.rename(columns={"Value":"Value", "House Count":"Count"})
+conduct_freq = conduct_freq.rename(columns={"Value":"Value", "Conduct Count":"Count"})
+
+freq_df = pd.concat([house_freq, conduct_freq], ignore_index=True)
+
+# Plot the chart
+if not freq_df.empty:
+    fig_freq = px.bar(
+        freq_df,
+        x="Value",
+        y="Count",
+        color="Category",
+        barmode="group",
+        title="Frequency of Each Value (House and Conduct Points)",
+        text="Count"
+    )
+    fig_freq.update_layout(xaxis_title="Value", yaxis_title="Count", xaxis_tickangle=-45)
+    st.plotly_chart(fig_freq, use_container_width=True)
 
         st.subheader("Cumulative Tracker")
         try:
