@@ -21,10 +21,8 @@ EXPECTED_COLS = [
 # -----------------------
 # Display School Logo
 # -----------------------
-# Option A: Load logo from local file in GitHub repo
-# Make sure logo.png is in your repository
 try:
-    logo = Image.open("logo.png")
+    logo = Image.open("logo.png")  # Ensure logo.png is in repo root
     st.image(logo, width=150)
 except:
     st.warning("Logo not found. Make sure logo.png is in the repo root.")
@@ -32,7 +30,7 @@ except:
 # -----------------------
 # Helper functions
 # -----------------------
-def load_and_clean(uploaded_file):
+def load_and_clean(uploaded_file, week_label):
     df = pd.read_csv(uploaded_file, header=0, dtype=str)
     if list(df.columns) != EXPECTED_COLS:
         if len(df.columns) == len(EXPECTED_COLS):
@@ -55,6 +53,7 @@ def load_and_clean(uploaded_file):
     df["Dept"] = df["Dept"].astype(str).str.strip()
     df["Value"] = df["Reward"].astype(str).str.strip()
     df["Pupil Name"] = df["Pupil Name"].astype(str).str.strip()
+    df["Week"] = week_label  # Add week label for filtering
     return df
 
 def detect_point_types(df):
@@ -148,7 +147,7 @@ week_label = st.text_input("Week label (used for cumulative tracker)", value=dat
 
 if uploaded_file is not None:
     try:
-        df = load_and_clean(uploaded_file)
+        df = load_and_clean(uploaded_file, week_label)
     except Exception as e:
         st.error(f"Error loading CSV: {e}")
         st.stop()
@@ -204,7 +203,7 @@ if uploaded_file is not None:
             st.plotly_chart(fig_values, use_container_width=True)
 
         # -----------------------
-        # Interactive Value Frequency Chart
+        # Interactive Value Frequency Chart with Week Dropdown
         # -----------------------
         st.subheader("Value Frequency — House vs Conduct Points (Interactive)")
 
@@ -212,15 +211,15 @@ if uploaded_file is not None:
         departments = sorted(df["Dept"].dropna().unique())
         selected_dept = st.multiselect("Select Department (leave empty for all):", departments)
 
-        # Filter by date range
-        start_date = st.date_input("Start Date", df["Date"].min())
-        end_date = st.date_input("End Date", df["Date"].max())
+        # Filter by Week label
+        week_labels = df['Week'].dropna().unique()
+        selected_week = st.selectbox("Select Week to filter (leave blank for all)", options=np.append("All", week_labels))
 
         filtered_df = df.copy()
         if selected_dept:
             filtered_df = filtered_df[filtered_df["Dept"].isin(selected_dept)]
-        filtered_df = filtered_df[(filtered_df["Date"] >= pd.to_datetime(start_date)) &
-                                  (filtered_df["Date"] <= pd.to_datetime(end_date))]
+        if selected_week != "All":
+            filtered_df = filtered_df[filtered_df["Week"] == selected_week]
 
         house_df_filtered = filtered_df[filtered_df["Category"].str.contains("house|reward", case=False, na=False)]
         conduct_df_filtered = filtered_df[filtered_df["Category"].str.contains("conduct|behaviour", case=False, na=False)]
@@ -242,7 +241,7 @@ if uploaded_file is not None:
                 y="Count",
                 color="Category",
                 barmode="group",
-                title="Frequency of Each Value (Filtered)",
+                title="Frequency of Each Value (Filtered by Department & Week)",
                 text="Count"
             )
             fig_freq.update_layout(xaxis_title="Value", yaxis_title="Count", xaxis_tickangle=-45)
