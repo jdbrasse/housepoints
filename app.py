@@ -11,11 +11,10 @@ from PIL import Image
 # Configuration / Helpers
 # -----------------------
 st.set_page_config(page_title="House Points Tracker", layout="wide")
-
 DEFAULT_WEEKLY_TARGET = 15
 EXPECTED_COLS = [
     "Pupil Name", "House", "Form", "Year", "Reward", "Category", "Points",
-    "Date", "Reward Description", "Teacher", "Dept", "Subject"
+    "Date", "Reward Description", "Teacher", "Dept", "Subject", "Email"
 ]
 
 # -----------------------
@@ -32,20 +31,8 @@ except:
 # -----------------------
 def load_and_clean(uploaded_file, week_label):
     df = pd.read_csv(uploaded_file, header=0, dtype=str)
-    if list(df.columns) != EXPECTED_COLS:
-        if len(df.columns) == len(EXPECTED_COLS):
-            df.columns = EXPECTED_COLS
-        else:
-            mapping = {}
-            for c in df.columns:
-                for exp in EXPECTED_COLS:
-                    if c.strip().lower() == exp.strip().lower():
-                        mapping[c] = exp
-            if mapping:
-                df = df.rename(columns=mapping)
-    missing = [c for c in EXPECTED_COLS if c not in df.columns]
-    if missing:
-        raise ValueError(f"Missing expected columns: {missing}")
+    if len(df.columns) == len(EXPECTED_COLS):
+        df.columns = EXPECTED_COLS
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df["Points"] = pd.to_numeric(df["Points"], errors="coerce").fillna(0).astype(int)
     df["Category"] = df["Category"].astype(str).str.strip().str.title()
@@ -53,7 +40,8 @@ def load_and_clean(uploaded_file, week_label):
     df["Dept"] = df["Dept"].astype(str).str.strip()
     df["Value"] = df["Reward"].astype(str).str.strip()
     df["Pupil Name"] = df["Pupil Name"].astype(str).str.strip()
-    df["Week"] = week_label  # Add week label for filtering
+    df["Email"] = df.get("Email", "")
+    df["Week"] = week_label
     return df
 
 def detect_point_types(df):
@@ -113,7 +101,6 @@ def update_cumulative_tracker(staff_weekly_df, cumulative_path):
 
 def to_excel_bytes(summaries: dict):
     from openpyxl import Workbook
-    from io import BytesIO
     out = BytesIO()
     with pd.ExcelWriter(out, engine="openpyxl") as writer:
         summaries["staff_summary"].to_excel(writer, sheet_name="Staff Summary", index=False)
@@ -126,24 +113,23 @@ def to_excel_bytes(summaries: dict):
     return out.read()
 
 # -----------------------
-# Streamlit App Layout
+# Streamlit Layout
 # -----------------------
-st.title("🏫 House & Conduct Points — Weekly Tracker")
+st.title("House & Conduct Points — Weekly Tracker")
 
 with st.sidebar:
     st.header("Settings")
     target_input = st.number_input("Weekly house points target per staff", min_value=1, value=DEFAULT_WEEKLY_TARGET, step=1)
-    cumulative_path = st.text_input("Cumulative tracker CSV path (shared drive)", value="./cumulative_tracker.csv")
+    cumulative_path = st.text_input("Cumulative tracker CSV path", value="./cumulative_tracker.csv")
     st.markdown("Upload weekly CSV then press 'Run analysis'.")
     st.markdown("---")
-    st.markdown("Columns expected (in any header order or position):")
+    st.markdown("Columns expected:")
     st.write(EXPECTED_COLS)
 
 st.markdown("## 1) Upload weekly CSV")
 uploaded_file = st.file_uploader("Upload CSV (weekly)", type=["csv"])
-
 st.markdown("## 2) Week label (auto or manual)")
-week_label = st.text_input("Week label (used for cumulative tracker)", value=datetime.now().strftime("%Y-%m-%d"))
+week_label = st.text_input("Week label", value=datetime.now().strftime("%Y-%m-%d"))
 
 if uploaded_file is not None:
     try:
@@ -153,66 +139,94 @@ if uploaded_file is not None:
         st.stop()
 
     st.success(f"Loaded {len(df):,} rows. Date range: {df['Date'].min()} to {df['Date'].max()}")
-    st.markdown("### Preview (first 10 rows)")
     st.dataframe(df.head(10))
 
     if st.button("Run analysis"):
         with st.spinner("Aggregating weekly data..."):
             aggregates = aggregate_weekly(df, week_label, target_input)
 
+        # Staff Summary
         st.subheader("Staff Summary (Weekly)")
         staff_df = aggregates["staff_summary"].sort_values("House Points This Week", ascending=False)
-        st.dataframe(staff_df)
+        def highlight_staff_target(row):
+            return ["background-color: #ffcccc" if row["UnderTargetThisWeek"] else "#ccffcc"]*len(row)
+        st.dataframe(staff_df.style.apply(highlight_staff_target, axis=1))
 
+        # Sidebar Leaderboard
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("🏆 Top 5 Staff This Week")
+        top_staff = staff_df.head(5)
+        for _, row in top_staff.iterrows():
+            status = "✅" if not row["UnderTargetThisWeek"] else "⚠️"
+            st.sidebar.write(f"{status} {row['Teacher']}: {row['House Points This Week']} pts")
+
+        # Weekly Target Alert
+        under_target_staff = staff_df[staff_df["UnderTargetThisWeek"]]
+        if not under_target_staff.empty:
+            st.warning(f"⚠️ {len(under_target_staff)} staff below weekly target of {target_input} house points!")
+
+        # Key Metrics
         total_house = int(aggregates["raw_house_df"]["Points"].sum()) if not aggregates["raw_house_df"].empty else 0
         total_conduct = int(aggregates["raw_conduct_df"]["Points"].abs().sum()) if not aggregates["raw_conduct_df"].empty else 0
-        under_target_count = int(staff_df["UnderTargetThisWeek"].sum())
         col1, col2, col3 = st.columns(3)
         col1.metric("Total house points (week)", f"{total_house:,}")
-        col2.metric("Total conduct (week, abs)", f"{total_conduct:,}")
-        col3.metric("Staff below target", f"{under_target_count}")
+        col2.metric("Total conduct points (week, abs)", f"{total_conduct:,}")
+        col3.metric("Staff below target", f"{len(under_target_staff)}")
 
-        st.markdown("#### Staff below weekly target")
-        st.dataframe(staff_df[staff_df["UnderTargetThisWeek"] == True])
-
+        # Department Summary
         st.subheader("Department Summary (Weekly)")
         st.dataframe(aggregates["dept_house"].sort_values("House Points This Week", ascending=False))
 
+        # Top Students
         st.subheader("Top Students (Weekly House Points)")
-        st.dataframe(aggregates["student_house"].head(30))
+        student_df = aggregates["student_house"].head(30)
+        st.dataframe(student_df)
+        if not student_df.empty:
+            fig_students = px.bar(
+                student_df.head(15),
+                x="House Points This Week",
+                y="Pupil Name",
+                orientation='h',
+                text="House Points This Week",
+                hover_data={"Pupil Name": True, "House Points This Week": True, "Year": True, "Form": True},
+                title="Top Students (week)"
+            )
+            fig_students.update_traces(texttemplate="%{text}", textposition="outside")
+            st.plotly_chart(fig_students, use_container_width=True)
 
+        # Top Staff Chart
+        if not staff_df.empty:
+            fig_staff = px.bar(
+                staff_df.sort_values("House Points This Week", ascending=False).head(15),
+                x="House Points This Week",
+                y="Teacher",
+                orientation='h',
+                text="House Points This Week",
+                hover_data={"Teacher": True, "House Points This Week": True, "Dept": True},
+                title="Top Staff (week)"
+            )
+            fig_staff.update_traces(texttemplate="%{text}", textposition="outside")
+            st.plotly_chart(fig_staff, use_container_width=True)
+
+        # Values Frequency (Weekly)
         st.subheader("Reward Values Frequency (Weekly)")
         val_df = aggregates["value_school"].sort_values("Count", ascending=False)
         st.dataframe(val_df)
-
-        st.subheader("Charts")
-        if not staff_df.empty:
-            fig_staff = px.bar(staff_df.sort_values("House Points This Week", ascending=False).head(15),
-                               x="House Points This Week", y="Teacher",
-                               orientation='h', title="Top Staff (week)", height=400)
-            st.plotly_chart(fig_staff, use_container_width=True)
-
-        if not aggregates["student_house"].empty:
-            top_students = aggregates["student_house"].head(15)
-            fig_students = px.bar(top_students, x="House Points This Week", y="Pupil Name",
-                                  orientation='h', title="Top Students (week)", height=400)
-            st.plotly_chart(fig_students, use_container_width=True)
-
         if not val_df.empty:
-            fig_values = px.pie(val_df, values="Count", names="Value", title="Values distribution (week)")
+            fig_values = px.pie(
+                val_df,
+                values="Count",
+                names="Value",
+                title="Values distribution (week)",
+                hover_data={"Count": True}
+            )
             st.plotly_chart(fig_values, use_container_width=True)
 
-        # -----------------------
-        # Interactive Value Frequency Chart with Week Dropdown
-        # -----------------------
+        # Interactive Value Frequency Chart
         st.subheader("Value Frequency — House vs Conduct Points (Interactive)")
-
-        # Filter by Department
         departments = sorted(df["Dept"].dropna().unique())
         selected_dept = st.multiselect("Select Department (leave empty for all):", departments)
-
-        # Filter by Week label
-        week_labels = df['Week'].dropna().unique()
+        week_labels = sorted(df['Week'].dropna().unique())
         selected_week = st.selectbox("Select Week to filter (leave blank for all)", options=np.append("All", week_labels))
 
         filtered_df = df.copy()
@@ -241,19 +255,24 @@ if uploaded_file is not None:
                 y="Count",
                 color="Category",
                 barmode="group",
-                title="Frequency of Each Value (Filtered by Department & Week)",
-                text="Count"
+                text="Count",
+                hover_data={"Value": True, "Count": True, "Category": True},
+                title="Frequency of Each Value (Filtered by Department & Week)"
             )
+            fig_freq.update_traces(texttemplate="%{text}", textposition="outside")
             fig_freq.update_layout(xaxis_title="Value", yaxis_title="Count", xaxis_tickangle=-45)
             st.plotly_chart(fig_freq, use_container_width=True)
 
-        # -----------------------
         # Download Excel Summary
-        # -----------------------
         excel_bytes = to_excel_bytes(aggregates)
-        st.download_button("Download weekly Excel summary", data=excel_bytes,
-                           file_name=f"weekly_summary_{week_label}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button(
+            "Download weekly Excel summary",
+            data=excel_bytes,
+            file_name=f"weekly_summary_{week_label}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
+        # Cumulative Tracker
         st.subheader("Cumulative Tracker")
         try:
             cum_df, staff_stats = update_cumulative_tracker(aggregates["staff_summary"], cumulative_path)
