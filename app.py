@@ -17,6 +17,14 @@ EXPECTED_COLS = [
     "Date", "Reward Description", "Teacher", "Dept", "Subject", "Email"
 ]
 
+# Map house letters to full names
+HOUSE_MAPPING = {
+    "B": "Brunel",
+    "L": "Liddell",
+    "D": "Dickens",
+    "W": "Wilberforce"
+}
+
 # -----------------------
 # Display School Logo
 # -----------------------
@@ -208,62 +216,69 @@ if uploaded_file is not None:
             fig_staff.update_traces(texttemplate="%{text}", textposition="outside")
             st.plotly_chart(fig_staff, use_container_width=True)
 
-        # Values Frequency (Weekly)
-        st.subheader("Reward Values Frequency (Weekly)")
-        val_df = aggregates["value_school"].sort_values("Count", ascending=False)
-        st.dataframe(val_df)
-        if not val_df.empty:
-            fig_values = px.pie(
-                val_df,
-                values="Count",
-                names="Value",
-                title="Values distribution (week)",
-                hover_data={"Count": True}
+        # -----------------------
+        # Category Frequency Breakdown
+        # -----------------------
+        st.subheader("Category Frequency Breakdown (Weekly)")
+        if not df.empty:
+            category_counts = df.groupby("Category")["Points"].count().reset_index().sort_values("Points", ascending=False)
+            category_points = df.groupby("Category")["Points"].sum().reset_index().sort_values("Points", ascending=False)
+
+            # Show table
+            st.markdown("**Number of points awarded per category**")
+            st.dataframe(category_counts)
+
+            # Show bar chart
+            fig_category = px.bar(
+                category_points,
+                x="Category",
+                y="Points",
+                text="Points",
+                title="Total Points by Category (Weekly)",
+                labels={"Points":"Total Points", "Category":"Category"}
             )
-            st.plotly_chart(fig_values, use_container_width=True)
+            fig_category.update_traces(texttemplate="%{text}", textposition="outside")
+            st.plotly_chart(fig_category, use_container_width=True)
 
-        # Interactive Value Frequency Chart
-        st.subheader("Value Frequency — House vs Conduct Points (Interactive)")
-        departments = sorted(df["Dept"].dropna().unique())
-        selected_dept = st.multiselect("Select Department (leave empty for all):", departments)
-        week_labels = sorted(df['Week'].dropna().unique())
-        selected_week = st.selectbox("Select Week to filter (leave blank for all)", options=np.append("All", week_labels))
-
-        filtered_df = df.copy()
-        if selected_dept:
-            filtered_df = filtered_df[filtered_df["Dept"].isin(selected_dept)]
-        if selected_week != "All":
-            filtered_df = filtered_df[filtered_df["Week"] == selected_week]
-
-        house_df_filtered = filtered_df[filtered_df["Category"].str.contains("house|reward", case=False, na=False)]
-        conduct_df_filtered = filtered_df[filtered_df["Category"].str.contains("conduct|behaviour", case=False, na=False)]
-
-        house_freq = house_df_filtered.groupby("Value")["Points"].count().reset_index()
-        house_freq.rename(columns={"Points":"Count"}, inplace=True)
-        house_freq["Category"] = "House Points"
-
-        conduct_freq = conduct_df_filtered.groupby("Value")["Points"].count().reset_index()
-        conduct_freq.rename(columns={"Points":"Count"}, inplace=True)
-        conduct_freq["Category"] = "Conduct Points"
-
-        freq_df = pd.concat([house_freq, conduct_freq], ignore_index=True)
-
-        if not freq_df.empty:
-            fig_freq = px.bar(
-                freq_df,
-                x="Value",
-                y="Count",
-                color="Category",
-                barmode="group",
-                text="Count",
-                hover_data={"Value": True, "Count": True, "Category": True},
-                title="Frequency of Each Value (Filtered by Department & Week)"
+        # -----------------------
+        # House Points by House
+        # -----------------------
+        st.subheader("House Points by House")
+        if not aggregates["raw_house_df"].empty:
+            house_points = aggregates["raw_house_df"].copy()
+            house_points["House"] = house_points["House"].map(HOUSE_MAPPING).fillna(house_points["House"])
+            house_points = house_points.groupby("House")["Points"].sum().reset_index().sort_values("Points", ascending=False)
+            fig_house = px.bar(
+                house_points,
+                x="House",
+                y="Points",
+                text="Points",
+                title="Total House Points per House",
             )
-            fig_freq.update_traces(texttemplate="%{text}", textposition="outside")
-            fig_freq.update_layout(xaxis_title="Value", yaxis_title="Count", xaxis_tickangle=-45)
-            st.plotly_chart(fig_freq, use_container_width=True)
+            fig_house.update_traces(texttemplate="%{text}", textposition="outside")
+            st.plotly_chart(fig_house, use_container_width=True)
 
+        # -----------------------
+        # Conduct Points by House
+        # -----------------------
+        st.subheader("Conduct Points by House")
+        if not aggregates["raw_conduct_df"].empty:
+            conduct_points = aggregates["raw_conduct_df"].copy()
+            conduct_points["House"] = conduct_points["House"].map(HOUSE_MAPPING).fillna(conduct_points["House"])
+            conduct_points = conduct_points.groupby("House")["Points"].sum().reset_index().sort_values("Points", ascending=False)
+            fig_conduct = px.bar(
+                conduct_points,
+                x="House",
+                y="Points",
+                text="Points",
+                title="Total Conduct Points per House",
+            )
+            fig_conduct.update_traces(texttemplate="%{text}", textposition="outside")
+            st.plotly_chart(fig_conduct, use_container_width=True)
+
+        # -----------------------
         # Download Excel Summary
+        # -----------------------
         excel_bytes = to_excel_bytes(aggregates)
         st.download_button(
             "Download weekly Excel summary",
@@ -272,7 +287,9 @@ if uploaded_file is not None:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
+        # -----------------------
         # Cumulative Tracker
+        # -----------------------
         st.subheader("Cumulative Tracker")
         try:
             cum_df, staff_stats = update_cumulative_tracker(aggregates["staff_summary"], cumulative_path)
