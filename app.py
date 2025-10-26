@@ -167,7 +167,6 @@ if uploaded_file:
             # -----------------------
             # Robust house/conduct category detection
             # -----------------------
-            # Adjust these if your CSV has slightly different values
             house_categories = ["house", "house point", "reward", "house reward"]
             conduct_categories = ["conduct", "conduct point", "behaviour", "behaviour point"]
 
@@ -184,7 +183,8 @@ if uploaded_file:
             else:
                 staff_house = pd.DataFrame(columns=["Teacher","House Points This Week"])
             if not conduct_df.empty:
-                staff_conduct = conduct_df.groupby("Teacher")["Points"].sum().reset_index().rename(columns={"Points":"Conduct Points This Week"})
+                # Count conduct points as positive for charts
+                staff_conduct = conduct_df.groupby("Teacher")["Points"].count().reset_index().rename(columns={"Points":"Conduct Points This Week"})
             else:
                 staff_conduct = pd.DataFrame(columns=["Teacher","Conduct Points This Week"])
 
@@ -193,4 +193,60 @@ if uploaded_file:
             st.subheader("Staff Summary")
             st.dataframe(staff_summary)
 
-            # The rest of the app remains as before (charts, downloads, cumulative tracker)
+            # -----------------------
+            # Charts
+            # -----------------------
+            # Top Staff
+            if not staff_summary.empty:
+                top_staff = staff_summary.sort_values("House Points This Week", ascending=True).tail(15)
+                fig_staff = px.bar(
+                    top_staff,
+                    x="House Points This Week",
+                    y="Teacher",
+                    orientation="h",
+                    text="House Points This Week",
+                    title="Top Staff (Weekly House Points)"
+                )
+                fig_staff.update_layout(
+                    yaxis=dict(tickfont=dict(size=12)),
+                    xaxis=dict(title="House Points", tickfont=dict(size=12)),
+                    title=dict(font=dict(size=20)),
+                    margin=dict(l=120)
+                )
+                fig_staff.update_traces(texttemplate="%{text}", textposition="outside")
+                st.plotly_chart(fig_staff, use_container_width=True)
+
+            # Top Students
+            if not house_df.empty:
+                student_df = house_df.groupby(["Pupil Name","Year","Form"])["Points"].sum().reset_index().rename(columns={"Points":"House Points This Week"})
+                student_df = student_df.sort_values("House Points This Week", ascending=True).tail(15)
+                fig_students = px.bar(
+                    student_df,
+                    x="House Points This Week",
+                    y="Pupil Name",
+                    orientation="h",
+                    text="House Points This Week",
+                    title="Top Students (Weekly)"
+                )
+                fig_students.update_layout(
+                    yaxis=dict(tickfont=dict(size=12)),
+                    xaxis=dict(title="House Points", tickfont=dict(size=12)),
+                    title=dict(font=dict(size=20)),
+                    margin=dict(l=150)
+                )
+                fig_students.update_traces(texttemplate="%{text}", textposition="outside")
+                st.plotly_chart(fig_students, use_container_width=True)
+
+            # House Points by House
+            if not house_df.empty:
+                house_points = house_df.copy()
+                house_points["House"] = house_points["House"].map(HOUSE_MAPPING).fillna(house_points["House"])
+                house_points = house_points.groupby("House")["Points"].sum().reset_index()
+                safe_plot(house_points, x="House", y="Points", title="House Points by House", text="Points")
+
+            # Conduct Points by House
+            if not conduct_df.empty:
+                conduct_points = conduct_df.copy()
+                conduct_points["House"] = conduct_points["House"].map(HOUSE_MAPPING).fillna(conduct_points["House"])
+                conduct_points = conduct_points.groupby("House")["Points"].count().reset_index().rename(columns={"Points":"Conduct Points"})
+                safe_plot(conduct_points, x="House", y="Conduct Points", title="Conduct Points by House", text="Conduct Points")
