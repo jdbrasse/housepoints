@@ -82,18 +82,36 @@ def safe_plot(df, x, y, title, text=None, orientation='v', margin_l=80):
         st.warning(f"Could not generate plot {title}: {e}")
 
 def update_cumulative_tracker(staff_weekly_df, cumulative_path):
-    cols = ["Teacher","House Points This Week","Conduct Points This Week","Week"]
-    for c in cols:
+    # Ensure required columns exist
+    for c in ["Teacher","House Points This Week","Conduct Points This Week","Week"]:
         if c not in staff_weekly_df.columns:
             staff_weekly_df[c] = 0
-    to_append = staff_weekly_df[cols].copy()
+
+    # Force numeric types
+    staff_weekly_df["House Points This Week"] = pd.to_numeric(staff_weekly_df["House Points This Week"], errors="coerce").fillna(0)
+    staff_weekly_df["Conduct Points This Week"] = pd.to_numeric(staff_weekly_df["Conduct Points This Week"], errors="coerce").fillna(0)
+
+    to_append = staff_weekly_df[["Teacher","House Points This Week","Conduct Points This Week","Week"]].copy()
+
+    # Ensure folder exists
     os.makedirs(os.path.dirname(cumulative_path) or ".", exist_ok=True)
+
+    # Load existing CSV if it exists
     if os.path.exists(cumulative_path):
         cum = pd.read_csv(cumulative_path)
+        # Force numeric in existing CSV too
+        for col in ["House Points This Week","Conduct Points This Week"]:
+            if col in cum.columns:
+                cum[col] = pd.to_numeric(cum[col], errors="coerce").fillna(0)
+            else:
+                cum[col] = 0
         cum = pd.concat([cum, to_append], ignore_index=True)
     else:
         cum = to_append.copy()
+
     cum.to_csv(cumulative_path, index=False)
+
+    # Aggregate stats
     staff_stats = cum.groupby("Teacher", as_index=False).agg(
         TotalHousePoints=("House Points This Week","sum"),
         WeeksReported=("Week","nunique"),
@@ -101,6 +119,7 @@ def update_cumulative_tracker(staff_weekly_df, cumulative_path):
     )
     staff_stats["AvgHousePerWeek"] = staff_stats["AvgHousePerWeek"].round(2)
     staff_stats["ContributionStatus"] = np.where(staff_stats["AvgHousePerWeek"] >= DEFAULT_WEEKLY_TARGET, "Positive", "Negative")
+
     return cum, staff_stats
 
 def to_excel_bytes(summaries: dict):
