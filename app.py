@@ -60,7 +60,7 @@ def load_and_clean(uploaded_file, week_label):
     # Data type corrections
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df["Points"] = pd.to_numeric(df["Points"], errors="coerce").fillna(0).astype(int)
-    df["Category"] = df["Category"].astype(str).str.strip().str.title()
+    df["Category"] = df["Category"].astype(str).str.strip().str.lower()
     df["Teacher"] = df["Teacher"].astype(str).str.strip()
     df["Value"] = df["Reward"].astype(str).str.strip()
     df["Pupil Name"] = df["Pupil Name"].astype(str).str.strip()
@@ -141,10 +141,19 @@ if uploaded_file:
         st.success(f"Loaded {len(df):,} rows. Date range: {df['Date'].min()} to {df['Date'].max()}")
         st.dataframe(df.head(10))
 
+        # Show all unique categories for debugging
+        st.write("Unique categories in CSV (lowercased):", df["Category"].unique())
+
         if st.button("Run analysis"):
-            # Split house and conduct points
-            house_mask = df["Category"].str.contains("house|reward", case=False, na=False)
-            conduct_mask = df["Category"].str.contains("conduct|behaviour", case=False, na=False)
+            # -----------------------
+            # Robust house/conduct category detection
+            # -----------------------
+            house_categories = ["house", "house point", "reward", "house reward"]
+            conduct_categories = ["conduct", "conduct point", "behaviour", "behaviour point"]
+
+            house_mask = df["Category"].isin(house_categories)
+            conduct_mask = df["Category"].isin(conduct_categories)
+
             house_df = df[house_mask] if house_mask.any() else pd.DataFrame()
             conduct_df = df[conduct_mask] if conduct_mask.any() else pd.DataFrame()
 
