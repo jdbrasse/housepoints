@@ -2,16 +2,14 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import os
 from datetime import datetime
 
 # --- CONFIG ---
 st.set_page_config(page_title="House & Conduct Points Analysis", layout="wide")
-
 st.title("🏫 House & Conduct Points Analysis Dashboard")
-
 st.write("Upload your weekly CSV file to generate the analysis below.")
 
+# --- SETTINGS ---
 DEFAULT_WEEKLY_TARGET = 15
 HOUSE_MAPPING = {"B": "Brunel", "L": "Liddell", "D": "Dickens", "W": "Wilberforce"}
 
@@ -23,11 +21,13 @@ def load_and_clean(file):
     df = pd.read_csv(file)
     df.columns = df.columns.str.strip()
     df["Teacher"] = df["Teacher"].astype(str).str.strip().replace("", "Unknown")
-    df["Dept"] = df["Dept"].astype(str).str.strip()
+    df["Dep"] = df["Dep"].astype(str).str.strip()
     df["Reward"] = df["Reward"].astype(str).str.strip().str.lower()
     df["Category"] = df["Category"].astype(str).str.strip().str.lower()
     df["Points"] = pd.to_numeric(df["Points"], errors="coerce").fillna(0).astype(int)
-    df["House"] = df["House"].astype(str).str.strip()
+    df["House"] = df["House"].astype(str).str.strip().str.upper().map(HOUSE_MAPPING)
+    df["Form"] = df["Form"].astype(str).str.strip()
+    df["Year"] = df["Year"].astype(str).str.strip()
     return df
 
 # --- SAFE PLOT FUNCTION ---
@@ -45,42 +45,41 @@ if uploaded_file is not None:
     try:
         df = load_and_clean(uploaded_file)
 
-        # Split datasets
+        # --- DEBUGGING ---
+        st.subheader("🔍 File Structure Check")
+        st.write("Columns detected:", df.columns.tolist())
+        st.write("Unique Reward values detected:", df["Reward"].unique())
+        st.write("Unique House values detected:", df["House"].unique())
+
+        # --- FILTER HOUSE VS CONDUCT POINTS ---
         house_df = df[df["Reward"].str.contains("house", case=False, na=False)]
         conduct_df = df[df["Reward"].str.contains("conduct", case=False, na=False)]
 
-        st.subheader("📊 Data Overview")
-        st.write(f"Total records: {len(df)}")
-        st.write(f"House point records: {len(house_df)}")
-        st.write(f"Conduct point records: {len(conduct_df)}")
+        st.write(f"🏠 House points rows detected: {len(house_df)}")
+        st.write(f"⚠️ Conduct points rows detected: {len(conduct_df)}")
 
-        # --- HOUSE POINTS SUMMARY ---
+        # --- HOUSE POINTS ANALYSIS ---
         if not house_df.empty:
             st.subheader("🏠 House Points Summary")
 
             # Staff totals
             staff_house = (
                 house_df.groupby("Teacher")["Points"].sum().reset_index().rename(columns={"Points": "House Points This Week"})
-            )
-            staff_house = staff_house.sort_values("House Points This Week", ascending=False)
+            ).sort_values("House Points This Week", ascending=False)
 
             # Department totals
             dept_house = (
-                house_df.groupby("Dept")["Points"].sum().reset_index().rename(columns={"Points": "House Points"})
+                house_df.groupby("Dep")["Points"].sum().reset_index().rename(columns={"Points": "House Points"})
             )
 
             # Top students
             student_house = (
                 house_df.groupby(["Pupil Name", "Form", "Year"])["Points"]
-                .sum()
-                .reset_index()
-                .rename(columns={"Points": "House Points"})
+                .sum().reset_index().rename(columns={"Points": "House Points"})
             )
 
             # House totals
-            house_points = house_df.copy()
-            house_points["House"] = house_points["House"].map(HOUSE_MAPPING).fillna(house_points["House"])
-            house_points = house_points.groupby("House")["Points"].sum().reset_index()
+            house_points = house_df.groupby("House")["Points"].sum().reset_index()
 
             # Category frequency
             cat_freq = house_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points": "Frequency"})
@@ -91,7 +90,7 @@ if uploaded_file is not None:
             with col1:
                 safe_plot(staff_house.head(15), x="Teacher", y="House Points This Week", text="House Points This Week", title="Top 15 Staff (House Points)")
             with col2:
-                safe_plot(dept_house, x="Dept", y="House Points", text="House Points", title="House Points by Department")
+                safe_plot(dept_house, x="Dep", y="House Points", text="House Points", title="House Points by Department")
 
             col3, col4 = st.columns(2)
             with col3:
@@ -102,26 +101,25 @@ if uploaded_file is not None:
             st.subheader("📘 House Points Category Frequency")
             safe_plot(cat_freq, x="Category", y="Frequency", text="Frequency", title="House Point Categories Frequency")
 
-        # --- CONDUCT POINTS SUMMARY ---
+        # --- CONDUCT POINTS ANALYSIS ---
         if not conduct_df.empty:
             st.subheader("⚠️ Conduct Points Summary")
 
+            # Staff totals (count conduct points)
             staff_conduct = (
                 conduct_df.groupby("Teacher")["Points"].count().reset_index().rename(columns={"Points": "Conduct Points This Week"})
-            )
-            staff_conduct = staff_conduct.sort_values("Conduct Points This Week", ascending=False)
+            ).sort_values("Conduct Points This Week", ascending=False)
 
+            # Department totals
             dept_conduct = (
-                conduct_df.groupby("Dept")["Points"].count().reset_index().rename(columns={"Points": "Conduct Points"})
+                conduct_df.groupby("Dep")["Points"].count().reset_index().rename(columns={"Points": "Conduct Points"})
             )
 
-            house_conduct = conduct_df.copy()
-            house_conduct["House"] = house_conduct["House"].map(HOUSE_MAPPING).fillna(house_conduct["House"])
-            house_conduct = house_conduct.groupby("House")["Points"].count().reset_index().rename(columns={"Points": "Conduct Points"})
+            # House totals
+            house_conduct = conduct_df.groupby("House")["Points"].count().reset_index().rename(columns={"Points": "Conduct Points"})
 
-            cat_freq_conduct = (
-                conduct_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points": "Frequency"})
-            )
+            # Category frequency
+            cat_freq_conduct = conduct_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points": "Frequency"})
             cat_freq_conduct = cat_freq_conduct.sort_values("Frequency", ascending=False)
 
             # --- CHARTS ---
@@ -129,7 +127,7 @@ if uploaded_file is not None:
             with col5:
                 safe_plot(staff_conduct.head(15), x="Teacher", y="Conduct Points This Week", text="Conduct Points This Week", title="Top 15 Staff (Conduct Points)")
             with col6:
-                safe_plot(dept_conduct, x="Dept", y="Conduct Points", text="Conduct Points", title="Conduct Points by Department")
+                safe_plot(dept_conduct, x="Dep", y="Conduct Points", text="Conduct Points", title="Conduct Points by Department")
 
             col7, col8 = st.columns(2)
             with col7:
@@ -139,11 +137,12 @@ if uploaded_file is not None:
 
         # --- WEEKLY STAFF SUMMARY ---
         st.subheader("📅 Weekly Staff Summary (House Points)")
-
-        staff_summary = staff_house.copy()
-        staff_summary["On Target (≥15)"] = np.where(staff_summary["House Points This Week"] >= DEFAULT_WEEKLY_TARGET, "✅ Yes", "⚠️ No")
-
-        st.dataframe(staff_summary)
+        if 'staff_house' in locals() and not staff_house.empty:
+            staff_summary = staff_house.copy()
+            staff_summary["On Target (≥15)"] = np.where(staff_summary["House Points This Week"] >= DEFAULT_WEEKLY_TARGET, "✅ Yes", "⚠️ No")
+            st.dataframe(staff_summary)
+        else:
+            st.info("No house points data available to summarize.")
 
     except Exception as e:
         st.error(f"Error loading CSV: {e}")
