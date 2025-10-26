@@ -147,9 +147,16 @@ if uploaded_file:
             house_df = df[house_mask] if house_mask.any() else pd.DataFrame()
             conduct_df = df[conduct_mask] if conduct_mask.any() else pd.DataFrame()
 
-            # Staff summary
-            staff_house = house_df.groupby("Teacher")["Points"].sum().reset_index().rename(columns={"Points":"House Points This Week"})
-            staff_conduct = conduct_df.groupby("Teacher")["Points"].sum().reset_index().rename(columns={"Points":"Conduct Points This Week"})
+            # Staff summary (safe groupby)
+            if "Teacher" in house_df.columns and not house_df.empty:
+                staff_house = house_df.groupby("Teacher")["Points"].sum().reset_index().rename(columns={"Points":"House Points This Week"})
+            else:
+                staff_house = pd.DataFrame(columns=["Teacher","House Points This Week"])
+            if "Teacher" in conduct_df.columns and not conduct_df.empty:
+                staff_conduct = conduct_df.groupby("Teacher")["Points"].sum().reset_index().rename(columns={"Points":"Conduct Points This Week"})
+            else:
+                staff_conduct = pd.DataFrame(columns=["Teacher","Conduct Points This Week"])
+
             staff_summary = pd.merge(staff_house, staff_conduct, on="Teacher", how="outer").fillna(0)
             staff_summary["UnderTargetThisWeek"] = staff_summary["House Points This Week"] < target_input
             st.subheader("Staff Summary")
@@ -189,11 +196,13 @@ if uploaded_file:
                 dept_house = house_df.groupby("Dept")["Points"].sum().reset_index().rename(columns={"Points":"House Points This Week"})
                 st.subheader("Department Summary")
                 st.dataframe(dept_house)
+            else:
+                dept_house = pd.DataFrame()
 
             # Excel download
             summaries = {
                 "staff_summary": staff_summary,
-                "dept_house": dept_house if not house_df.empty else pd.DataFrame(),
+                "dept_house": dept_house,
                 "student_house": student_df if not house_df.empty else pd.DataFrame(),
                 "value_school": df.groupby("Value")["Points"].count().reset_index().rename(columns={"Points":"Count"}),
                 "raw_house_df": house_df,
