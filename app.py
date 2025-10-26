@@ -17,7 +17,6 @@ EXPECTED_COLS = [
     "Date", "Reward Description", "Teacher", "Dept", "Subject", "Email"
 ]
 
-# Map house letters to full names
 HOUSE_MAPPING = {
     "B": "Brunel",
     "L": "Liddell",
@@ -29,26 +28,36 @@ HOUSE_MAPPING = {
 # Display School Logo
 # -----------------------
 try:
-    logo = Image.open("logo.png")  # Ensure logo.png is in repo root
+    logo = Image.open("logo.png")
     st.image(logo, width=150)
-except:
-    st.warning("Logo not found. Make sure logo.png is in the repo root.")
+except Exception:
+    st.warning("Logo not found or unreadable. Continuing without logo.")
 
 # -----------------------
 # Helper functions
 # -----------------------
 def load_and_clean(uploaded_file, week_label):
-    df = pd.read_csv(uploaded_file, header=0, dtype=str)
-    # Strip whitespace from column names
-    df.columns = df.columns.str.strip()
-    # Handle Dept / Dep column
-    if "Dept" in df.columns:
-        df["Dept"] = df["Dept"].astype(str).str.strip()
-    elif "Dep" in df.columns:
+    try:
+        df = pd.read_csv(uploaded_file, header=0, dtype=str)
+        df.columns = df.columns.str.strip()
+    except Exception as e:
+        st.error(f"Could not read CSV: {e}")
+        return pd.DataFrame()
+
+    # Dept column handling
+    if "Dept" not in df.columns and "Dep" in df.columns:
         df["Dept"] = df["Dep"].astype(str).str.strip()
-    else:
+    elif "Dept" not in df.columns:
         df["Dept"] = ""
-    # Standardize other columns
+    else:
+        df["Dept"] = df["Dept"].astype(str).str.strip()
+
+    # Ensure all expected columns exist
+    for col in EXPECTED_COLS:
+        if col not in df.columns:
+            df[col] = ""
+
+    # Data type corrections
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df["Points"] = pd.to_numeric(df["Points"], errors="coerce").fillna(0).astype(int)
     df["Category"] = df["Category"].astype(str).str.strip().str.title()
@@ -59,38 +68,17 @@ def load_and_clean(uploaded_file, week_label):
     df["Week"] = week_label
     return df
 
-def detect_point_types(df):
-    house_mask = df["Category"].str.contains("house|reward", case=False, na=False)
-    conduct_mask = df["Category"].str.contains("conduct|behaviour", case=False, na=False)
-    if not house_mask.any() and not conduct_mask.any():
-        house_mask = df["Points"] > 0
-        conduct_mask = df["Points"] < 0
-    return house_mask, conduct_mask
-
-def aggregate_weekly(df, week_label, target):
-    house_mask, conduct_mask = detect_point_types(df)
-    house_df = df[house_mask].copy() if house_mask.any() else df.copy()
-    conduct_df = df[conduct_mask].copy() if conduct_mask.any() else pd.DataFrame(columns=df.columns)
-    staff_house = house_df.groupby("Teacher", as_index=False)["Points"].sum().rename(columns={"Points":"House Points This Week"})
-    staff_conduct = conduct_df.groupby("Teacher", as_index=False)["Points"].sum().rename(columns={"Points":"Conduct Points This Week"})
-    dept_house = house_df.groupby("Dept", as_index=False)["Points"].sum().rename(columns={"Points":"House Points This Week"})
-    student_house = house_df.groupby(["Pupil Name","Year","Form"], as_index=False)["Points"].sum().rename(columns={"Points":"House Points This Week"})
-    value_school = house_df.groupby("Value", as_index=False)["Points"].count().rename(columns={"Points":"Count"})
-    staff_summary = staff_house.merge(staff_conduct, on="Teacher", how="outer").fillna(0)
-    teacher_dept = house_df.groupby("Teacher")["Dept"].agg(lambda s: s.mode().iloc[0] if not s.mode().empty else "").reset_index()
-    if "Dept" in teacher_dept.columns:
-        staff_summary = staff_summary.merge(teacher_dept, on="Teacher", how="left")
-    staff_summary["UnderTargetThisWeek"] = staff_summary["House Points This Week"] < target
-    staff_summary["Week"] = week_label
-    student_house = student_house.sort_values("House Points This Week", ascending=False)
-    return {
-        "staff_summary": staff_summary,
-        "dept_house": dept_house,
-        "student_house": student_house,
-        "value_school": value_school,
-        "raw_house_df": house_df,
-        "raw_conduct_df": conduct_df
-    }
+def safe_plot(df, x, y, title, text=None, orientation='v'):
+    if df.empty:
+        st.warning(f"No data to plot: {title}")
+        return
+    try:
+        fig = px.bar(df, x=x, y=y, text=text, orientation=orientation, title=title)
+        if text:
+            fig.update_traces(texttemplate="%{text}", textposition="outside")
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.warning(f"Could not generate plot {title}: {e}")
 
 def update_cumulative_tracker(staff_weekly_df, cumulative_path):
     cols = ["Teacher","House Points This Week","Conduct Points This Week","Week"]
@@ -138,168 +126,91 @@ with st.sidebar:
     cumulative_path = st.text_input("Cumulative tracker CSV path", value="./cumulative_tracker.csv")
     st.markdown("Upload weekly CSV then press 'Run analysis'.")
     st.markdown("---")
-    st.markdown("Columns expected:")
+    st.markdown("Expected columns:")
     st.write(EXPECTED_COLS)
 
-st.markdown("## 1) Upload weekly CSV")
-uploaded_file = st.file_uploader("Upload CSV (weekly)", type=["csv"])
-st.markdown("## 2) Week label (auto or manual)")
+uploaded_file = st.file_uploader("Upload weekly CSV", type=["csv"])
 week_label = st.text_input("Week label", value=datetime.now().strftime("%Y-%m-%d"))
 
-if uploaded_file is not None:
-    try:
-        df = load_and_clean(uploaded_file, week_label)
-    except Exception as e:
-        st.error(f"Error loading CSV: {e}")
-        st.stop()
+if uploaded_file:
+    df = load_and_clean(uploaded_file, week_label)
+    if df.empty:
+        st.warning("CSV is empty or unreadable.")
+    else:
+        st.success(f"Loaded {len(df):,} rows. Date range: {df['Date'].min()} to {df['Date'].max()}")
+        st.dataframe(df.head(10))
 
-    st.success(f"Loaded {len(df):,} rows. Date range: {df['Date'].min()} to {df['Date'].max()}")
-    st.dataframe(df.head(10))
+        if st.button("Run analysis"):
+            # Split house and conduct points
+            house_mask = df["Category"].str.contains("house|reward", case=False, na=False)
+            conduct_mask = df["Category"].str.contains("conduct|behaviour", case=False, na=False)
+            house_df = df[house_mask] if house_mask.any() else pd.DataFrame()
+            conduct_df = df[conduct_mask] if conduct_mask.any() else pd.DataFrame()
 
-    if st.button("Run analysis"):
-        with st.spinner("Aggregating weekly data..."):
-            aggregates = aggregate_weekly(df, week_label, target_input)
+            # Staff summary
+            staff_house = house_df.groupby("Teacher")["Points"].sum().reset_index().rename(columns={"Points":"House Points This Week"})
+            staff_conduct = conduct_df.groupby("Teacher")["Points"].sum().reset_index().rename(columns={"Points":"Conduct Points This Week"})
+            staff_summary = pd.merge(staff_house, staff_conduct, on="Teacher", how="outer").fillna(0)
+            staff_summary["UnderTargetThisWeek"] = staff_summary["House Points This Week"] < target_input
+            st.subheader("Staff Summary")
+            st.dataframe(staff_summary)
 
-        # Staff Summary
-        st.subheader("Staff Summary (Weekly)")
-        staff_df = aggregates["staff_summary"].sort_values("House Points This Week", ascending=False)
-        def highlight_staff_target(row):
-            return ["background-color: #ffcccc" if row["UnderTargetThisWeek"] else "#ccffcc"]*len(row)
-        st.dataframe(staff_df.style.apply(highlight_staff_target, axis=1))
+            # Top staff chart
+            safe_plot(staff_summary.sort_values("House Points This Week", ascending=False).head(15),
+                      x="Teacher", y="House Points This Week", title="Top Staff (Weekly)", text="House Points This Week", orientation='h')
 
-        # Sidebar Leaderboard
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("🏆 Top 5 Staff This Week")
-        top_staff = staff_df.head(5)
-        for _, row in top_staff.iterrows():
-            status = "✅" if not row["UnderTargetThisWeek"] else "⚠️"
-            st.sidebar.write(f"{status} {row['Teacher']}: {row['House Points This Week']} pts")
+            # Top students chart
+            if not house_df.empty:
+                student_df = house_df.groupby(["Pupil Name","Year","Form"])["Points"].sum().reset_index().rename(columns={"Points":"House Points This Week"})
+                student_df = student_df.sort_values("House Points This Week", ascending=False)
+                safe_plot(student_df.head(15), x="Pupil Name", y="House Points This Week",
+                          title="Top Students (Weekly)", text="House Points This Week", orientation='h')
 
-        # Weekly Target Alert
-        under_target_staff = staff_df[staff_df["UnderTargetThisWeek"]]
-        if not under_target_staff.empty:
-            st.warning(f"⚠️ {len(under_target_staff)} staff below weekly target of {target_input} house points!")
+            # House points by house
+            if not house_df.empty:
+                house_points = house_df.copy()
+                house_points["House"] = house_points["House"].map(HOUSE_MAPPING).fillna(house_points["House"])
+                house_points = house_points.groupby("House")["Points"].sum().reset_index()
+                safe_plot(house_points, x="House", y="Points", title="House Points by House", text="Points")
 
-        # Key Metrics
-        total_house = int(aggregates["raw_house_df"]["Points"].sum()) if not aggregates["raw_house_df"].empty else 0
-        total_conduct = int(aggregates["raw_conduct_df"]["Points"].abs().sum()) if not aggregates["raw_conduct_df"].empty else 0
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total house points (week)", f"{total_house:,}")
-        col2.metric("Total conduct points (week, abs)", f"{total_conduct:,}")
-        col3.metric("Staff below target", f"{len(under_target_staff)}")
+            # Conduct points by house
+            if not conduct_df.empty:
+                conduct_points = conduct_df.copy()
+                conduct_points["House"] = conduct_points["House"].map(HOUSE_MAPPING).fillna(conduct_points["House"])
+                conduct_points = conduct_points.groupby("House")["Points"].sum().reset_index()
+                safe_plot(conduct_points, x="House", y="Points", title="Conduct Points by House", text="Points")
 
-        # Department Summary
-        st.subheader("Department Summary (Weekly)")
-        st.dataframe(aggregates["dept_house"].sort_values("House Points This Week", ascending=False))
-
-        # Top Students
-        st.subheader("Top Students (Weekly House Points)")
-        student_df = aggregates["student_house"].head(30)
-        st.dataframe(student_df)
-        if not student_df.empty:
-            fig_students = px.bar(
-                student_df.head(15),
-                x="House Points This Week",
-                y="Pupil Name",
-                orientation='h',
-                text="House Points This Week",
-                hover_data={"Pupil Name": True, "House Points This Week": True, "Year": True, "Form": True},
-                title="Top Students (week)"
-            )
-            fig_students.update_traces(texttemplate="%{text}", textposition="outside")
-            st.plotly_chart(fig_students, use_container_width=True)
-
-        # Top Staff Chart
-        if not staff_df.empty:
-            fig_staff = px.bar(
-                staff_df.sort_values("House Points This Week", ascending=False).head(15),
-                x="House Points This Week",
-                y="Teacher",
-                orientation='h',
-                text="House Points This Week",
-                hover_data={"Teacher": True, "House Points This Week": True, "Dept": True},
-                title="Top Staff (week)"
-            )
-            fig_staff.update_traces(texttemplate="%{text}", textposition="outside")
-            st.plotly_chart(fig_staff, use_container_width=True)
-
-        # -----------------------
-        # Category Frequency Breakdown
-        # -----------------------
-        st.subheader("Category Frequency Breakdown (Weekly)")
-        if not df.empty:
+            # Category frequency
             category_counts = df.groupby("Category")["Points"].count().reset_index().sort_values("Points", ascending=False)
-            category_points = df.groupby("Category")["Points"].sum().reset_index().sort_values("Points", ascending=False)
+            safe_plot(category_counts, x="Category", y="Points", title="Category Frequency", text="Points")
 
-            # Show table
-            st.markdown("**Number of points awarded per category**")
-            st.dataframe(category_counts)
+            # Department summary
+            if not house_df.empty:
+                dept_house = house_df.groupby("Dept")["Points"].sum().reset_index().rename(columns={"Points":"House Points This Week"})
+                st.subheader("Department Summary")
+                st.dataframe(dept_house)
 
-            # Show bar chart
-            fig_category = px.bar(
-                category_points,
-                x="Category",
-                y="Points",
-                text="Points",
-                title="Total Points by Category (Weekly)",
-                labels={"Points":"Total Points", "Category":"Category"}
+            # Excel download
+            summaries = {
+                "staff_summary": staff_summary,
+                "dept_house": dept_house if not house_df.empty else pd.DataFrame(),
+                "student_house": student_df if not house_df.empty else pd.DataFrame(),
+                "value_school": df.groupby("Value")["Points"].count().reset_index().rename(columns={"Points":"Count"}),
+                "raw_house_df": house_df,
+                "raw_conduct_df": conduct_df
+            }
+            excel_bytes = to_excel_bytes(summaries)
+            st.download_button(
+                "Download weekly Excel summary",
+                data=excel_bytes,
+                file_name=f"weekly_summary_{week_label}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-            fig_category.update_traces(texttemplate="%{text}", textposition="outside")
-            st.plotly_chart(fig_category, use_container_width=True)
 
-        # -----------------------
-        # House Points by House
-        # -----------------------
-        st.subheader("House Points by House")
-        if not aggregates["raw_house_df"].empty:
-            house_points = aggregates["raw_house_df"].copy()
-            house_points["House"] = house_points["House"].map(HOUSE_MAPPING).fillna(house_points["House"])
-            house_points = house_points.groupby("House")["Points"].sum().reset_index().sort_values("Points", ascending=False)
-            fig_house = px.bar(
-                house_points,
-                x="House",
-                y="Points",
-                text="Points",
-                title="Total House Points per House",
-            )
-            fig_house.update_traces(texttemplate="%{text}", textposition="outside")
-            st.plotly_chart(fig_house, use_container_width=True)
-
-        # -----------------------
-        # Conduct Points by House
-        # -----------------------
-        st.subheader("Conduct Points by House")
-        if not aggregates["raw_conduct_df"].empty:
-            conduct_points = aggregates["raw_conduct_df"].copy()
-            conduct_points["House"] = conduct_points["House"].map(HOUSE_MAPPING).fillna(conduct_points["House"])
-            conduct_points = conduct_points.groupby("House")["Points"].sum().reset_index().sort_values("Points", ascending=False)
-            fig_conduct = px.bar(
-                conduct_points,
-                x="House",
-                y="Points",
-                text="Points",
-                title="Total Conduct Points per House",
-            )
-            fig_conduct.update_traces(texttemplate="%{text}", textposition="outside")
-            st.plotly_chart(fig_conduct, use_container_width=True)
-
-        # -----------------------
-        # Download Excel Summary
-        # -----------------------
-        excel_bytes = to_excel_bytes(aggregates)
-        st.download_button(
-            "Download weekly Excel summary",
-            data=excel_bytes,
-            file_name=f"weekly_summary_{week_label}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-        # -----------------------
-        # Cumulative Tracker
-        # -----------------------
-        st.subheader("Cumulative Tracker")
-        try:
-            cum_df, staff_stats = update_cumulative_tracker(aggregates["staff_summary"], cumulative_path)
-            st.dataframe(staff_stats.sort_values("TotalHousePoints", ascending=False))
-        except Exception as e:
-            st.error(f"Error updating cumulative tracker: {e}")
+            # Cumulative tracker
+            try:
+                cum_df, staff_stats = update_cumulative_tracker(staff_summary, cumulative_path)
+                st.subheader("Cumulative Tracker")
+                st.dataframe(staff_stats.sort_values("TotalHousePoints", ascending=False))
+            except Exception as e:
+                st.warning(f"Could not update cumulative tracker: {e}")
