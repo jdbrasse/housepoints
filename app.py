@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-from datetime import datetime
 
 # --- CONFIG ---
 st.set_page_config(page_title="House & Conduct Points Analysis", layout="wide")
@@ -19,7 +18,12 @@ uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
 # --- DATA CLEANING ---
 def load_and_clean(file):
     df = pd.read_csv(file)
+    # Strip spaces and explicitly set expected column names
     df.columns = df.columns.str.strip()
+    expected_columns = ["Pupil Name","House","Form","Year","Reward","Category","Points","Date","Reward Description","Teacher","Dep","Subject"]
+    df.columns = expected_columns
+
+    # Clean and prepare columns
     df["Teacher"] = df["Teacher"].astype(str).str.strip().replace("", "Unknown")
     df["Dep"] = df["Dep"].astype(str).str.strip()
     df["Reward"] = df["Reward"].astype(str).str.strip().str.lower()
