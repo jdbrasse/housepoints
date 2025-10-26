@@ -39,13 +39,20 @@ except:
 # -----------------------
 def load_and_clean(uploaded_file, week_label):
     df = pd.read_csv(uploaded_file, header=0, dtype=str)
-    if len(df.columns) == len(EXPECTED_COLS):
-        df.columns = EXPECTED_COLS
+    # Strip whitespace from column names
+    df.columns = df.columns.str.strip()
+    # Handle Dept / Dep column
+    if "Dept" in df.columns:
+        df["Dept"] = df["Dept"].astype(str).str.strip()
+    elif "Dep" in df.columns:
+        df["Dept"] = df["Dep"].astype(str).str.strip()
+    else:
+        df["Dept"] = ""
+    # Standardize other columns
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df["Points"] = pd.to_numeric(df["Points"], errors="coerce").fillna(0).astype(int)
     df["Category"] = df["Category"].astype(str).str.strip().str.title()
     df["Teacher"] = df["Teacher"].astype(str).str.strip()
-    df["Dept"] = df["Dept"].astype(str).str.strip()
     df["Value"] = df["Reward"].astype(str).str.strip()
     df["Pupil Name"] = df["Pupil Name"].astype(str).str.strip()
     df["Email"] = df.get("Email", "")
