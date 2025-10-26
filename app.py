@@ -68,7 +68,7 @@ def load_and_clean(uploaded_file, week_label):
     df["Week"] = week_label
     return df
 
-def safe_plot(df, x, y, title, text=None, orientation='v'):
+def safe_plot(df, x, y, title, text=None, orientation='v', margin_l=80):
     if df.empty:
         st.warning(f"No data to plot: {title}")
         return
@@ -76,6 +76,7 @@ def safe_plot(df, x, y, title, text=None, orientation='v'):
         fig = px.bar(df, x=x, y=y, text=text, orientation=orientation, title=title)
         if text:
             fig.update_traces(texttemplate="%{text}", textposition="outside")
+        fig.update_layout(margin=dict(l=margin_l))
         st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
         st.warning(f"Could not generate plot {title}: {e}")
@@ -162,16 +163,50 @@ if uploaded_file:
             st.subheader("Staff Summary")
             st.dataframe(staff_summary)
 
-            # Top staff chart
-            safe_plot(staff_summary.sort_values("House Points This Week", ascending=False).head(15),
-                      x="Teacher", y="House Points This Week", title="Top Staff (Weekly)", text="House Points This Week", orientation='h')
+            # -----------------------
+            # Top Staff chart (horizontal, readable)
+            # -----------------------
+            if not staff_summary.empty:
+                top_staff = staff_summary.sort_values("House Points This Week", ascending=True).tail(15)
+                fig_staff = px.bar(
+                    top_staff,
+                    x="House Points This Week",
+                    y="Teacher",
+                    orientation="h",
+                    text="House Points This Week",
+                    title="Top Staff (Weekly)"
+                )
+                fig_staff.update_layout(
+                    yaxis=dict(tickfont=dict(size=12)),
+                    xaxis=dict(title="House Points", tickfont=dict(size=12)),
+                    title=dict(font=dict(size=20)),
+                    margin=dict(l=120)
+                )
+                fig_staff.update_traces(texttemplate="%{text}", textposition="outside")
+                st.plotly_chart(fig_staff, use_container_width=True)
 
-            # Top students chart
+            # -----------------------
+            # Top Students chart (horizontal, readable)
+            # -----------------------
             if not house_df.empty:
                 student_df = house_df.groupby(["Pupil Name","Year","Form"])["Points"].sum().reset_index().rename(columns={"Points":"House Points This Week"})
-                student_df = student_df.sort_values("House Points This Week", ascending=False)
-                safe_plot(student_df.head(15), x="Pupil Name", y="House Points This Week",
-                          title="Top Students (Weekly)", text="House Points This Week", orientation='h')
+                student_df = student_df.sort_values("House Points This Week", ascending=True).tail(15)
+                fig_students = px.bar(
+                    student_df,
+                    x="House Points This Week",
+                    y="Pupil Name",
+                    orientation="h",
+                    text="House Points This Week",
+                    title="Top Students (Weekly)"
+                )
+                fig_students.update_layout(
+                    yaxis=dict(tickfont=dict(size=12)),
+                    xaxis=dict(title="House Points", tickfont=dict(size=12)),
+                    title=dict(font=dict(size=20)),
+                    margin=dict(l=150)
+                )
+                fig_students.update_traces(texttemplate="%{text}", textposition="outside")
+                st.plotly_chart(fig_students, use_container_width=True)
 
             # House points by house
             if not house_df.empty:
