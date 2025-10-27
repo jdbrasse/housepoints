@@ -3,8 +3,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import plotly.express as px
-import os
 from io import BytesIO
+import os
 
 # -----------------------
 # CONFIGURATION
@@ -22,23 +22,21 @@ EXPECTED_REWARD_COLS = [
 ]
 
 # -----------------------
-# UTILITIES
+# FUNCTIONS
 # -----------------------
 
-def read_staff_file(path):
-    """Read staff master list. Col A=First, B=Surname, C=Initials, D=Dept"""
+def read_staff_file(path_or_buffer):
+    """Read staff master list: A=First, B=Surname, C=Initials, D=Dept."""
     try:
-        df = pd.read_csv(path, dtype=str)
+        df = pd.read_csv(path_or_buffer, dtype=str)
     except Exception as e:
         st.error(f"Error reading staff list: {e}")
         return pd.DataFrame(columns=["Initials", "FullName", "Dep"])
 
     df.columns = df.columns.str.strip()
     df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
-
-    # Ensure minimum columns
     if len(df.columns) < 4:
-        st.warning("Staff list file has fewer than 4 columns. Expected First, Surname, Initials, Dept.")
+        st.warning("Staff file has fewer than 4 columns. Expected First, Surname, Initials, Dept.")
         return pd.DataFrame(columns=["Initials", "FullName", "Dep"])
 
     df["FirstName"] = df.iloc[:, 0]
@@ -49,11 +47,10 @@ def read_staff_file(path):
     df = df[["Initials", "FullName", "Dep"]].dropna(subset=["Initials"])
     return df
 
-def read_rewards_file(uploaded):
-    """Read and clean the weekly rewards CSV"""
-    df = pd.read_csv(uploaded, dtype=str)
+def read_rewards_file(file_or_buffer):
+    """Read and clean weekly rewards CSV."""
+    df = pd.read_csv(file_or_buffer, dtype=str)
     df.columns = df.columns.str.strip()
-    # Force expected column names if not exact
     if len(df.columns) >= len(EXPECTED_REWARD_COLS):
         df = df.iloc[:, :len(EXPECTED_REWARD_COLS)]
         df.columns = EXPECTED_REWARD_COLS
@@ -63,7 +60,6 @@ def read_rewards_file(uploaded):
                 df[col] = ""
         df = df[EXPECTED_REWARD_COLS]
 
-    # Clean and normalise
     df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
     df["Teacher"] = df["Teacher"].fillna("").astype(str).str.upper().str.strip()
     df["Dep"] = df["Dep"].fillna("").astype(str).str.strip()
@@ -78,12 +74,10 @@ def safe_plot(df_plot, x, y, title, text=None, orientation="v", color=None, colo
         st.info(f"No data for {title}")
         return
     try:
-        fig = px.bar(
-            df_plot, x=x, y=y, text=text, orientation=orientation, title=title,
-            color=color, color_discrete_map=color_map
-        )
+        fig = px.bar(df_plot, x=x, y=y, text=text, orientation=orientation, title=title,
+                     color=color, color_discrete_map=color_map)
         fig.update_traces(texttemplate="%{text}", textposition="outside")
-        fig.update_layout(title=dict(font=dict(size=18)), xaxis_title=None, yaxis_title=None)
+        fig.update_layout(title=dict(font=dict(size=18)))
         st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
         st.warning(f"Plot error for {title}: {e}")
@@ -98,24 +92,53 @@ def to_excel_bytes(data_dict):
     return output.read()
 
 # -----------------------
-# LOAD STAFF MASTER
+# STAFF LIST HANDLING (with cache)
 # -----------------------
+@st.cache_data(show_spinner=False)
+def load_staff_data(file_or_path):
+    return read_staff_file(file_or_path)
+
+st.sidebar.header("Staff List Configuration")
+staff_df = None
+
+# Try default file
 if os.path.exists(DEFAULT_STAFF_FILE):
-    staff_df = read_staff_file(DEFAULT_STAFF_FILE)
+    staff_df = load_staff_data(DEFAULT_STAFF_FILE)
+    st.sidebar.success("✅ Loaded default staff list.")
 else:
-    st.error("⚠️ Default staff file not found.")
-    st.stop()
+    # Check for cached upload
+    if "cached_staff_file" in st.session_state and st.session_state["cached_staff_file"] is not None:
+        st.sidebar.success("✅ Using previously uploaded staff list.")
+        staff_df = load_staff_data(st.session_state["cached_staff_file"])
+    else:
+        st.sidebar.warning("⚠️ Default staff file not found.")
+        staff_upload = st.sidebar.file_uploader("Upload Staff List CSV", type=["csv"], key="staff_upload")
+        if staff_upload is not None:
+            st.session_state["cached_staff_file"] = staff_upload
+            staff_df = load_staff_data(staff_upload)
+            st.sidebar.success("✅ Uploaded staff list loaded and saved for this session.")
+        else:
+            st.sidebar.error("Please upload a staff list CSV to continue.")
+            st.stop()
 
 # -----------------------
-# UPLOAD WEEKLY REWARDS FILE
+# REWARDS FILE HANDLING (with cache)
 # -----------------------
-uploaded = st.file_uploader("Upload Weekly Rewards CSV", type=["csv"])
-if uploaded is None:
-    st.info("Please upload a rewards CSV file to begin analysis.")
-    st.stop()
+@st.cache_data(show_spinner=False)
+def load_rewards_data(file_or_buffer):
+    return read_rewards_file(file_or_buffer)
 
-df = read_rewards_file(uploaded)
-st.write("Columns detected:", df.columns.tolist())
+uploaded = st.file_uploader("Upload Weekly Rewards CSV", type=["csv"], key="rewards_upload")
+
+if uploaded is not None:
+    st.session_state["cached_rewards_file"] = uploaded
+    df = load_rewards_data(uploaded)
+elif "cached_rewards_file" in st.session_state and st.session_state["cached_rewards_file"] is not None:
+    st.info("✅ Using previously uploaded weekly rewards file.")
+    df = load_rewards_data(st.session_state["cached_rewards_file"])
+else:
+    st.info("Please upload a weekly rewards CSV to begin analysis.")
+    st.stop()
 
 # -----------------------
 # SPLIT HOUSE VS CONDUCT
@@ -126,7 +149,7 @@ conduct_df = df[df["Reward"].str.contains("conduct", case=False, na=False)]
 st.write(f"🏠 House Points Rows: {len(house_df)} | ⚠️ Conduct Points Rows: {len(conduct_df)}")
 
 # -----------------------
-# AGGREGATE STAFF POINTS
+# STAFF AGGREGATES
 # -----------------------
 if not house_df.empty:
     staff_house = house_df.groupby("Teacher", as_index=False)["Points"].sum().rename(columns={"Points": "House Points This Week"})
@@ -140,11 +163,9 @@ else:
 
 staff_agg = pd.merge(staff_house, staff_conduct, on="Teacher", how="outer").fillna(0)
 staff_agg["Teacher"] = staff_agg["Teacher"].astype(str).str.upper().str.strip()
-staff_agg["House Points This Week"] = pd.to_numeric(staff_agg["House Points This Week"], errors="coerce").fillna(0).astype(int)
-staff_agg["Conduct Points This Week"] = pd.to_numeric(staff_agg["Conduct Points This Week"], errors="coerce").fillna(0).astype(int)
 
 # -----------------------
-# MERGE WITH MASTER LIST (SAFE)
+# MERGE WITH STAFF LIST
 # -----------------------
 st.subheader("🧩 Merging Staff List with Weekly Data")
 
@@ -152,14 +173,8 @@ if "Initials" in staff_df.columns:
     staff_df = staff_df.rename(columns={"Initials": "Teacher"})
 staff_df["Teacher"] = staff_df["Teacher"].astype(str).str.upper().str.strip()
 
-# Build master
 master = staff_df[["Teacher", "FullName", "Dep"]].rename(columns={"Dep": "Dept"}).copy()
 
-# Debug check
-st.write("Staff Master Columns:", master.columns.tolist())
-st.write("Weekly Data Columns:", staff_agg.columns.tolist())
-
-# Merge safely
 staff_full = pd.merge(master, staff_agg, on="Teacher", how="left").fillna(0)
 staff_full["House Points This Week"] = pd.to_numeric(staff_full["House Points This Week"], errors="coerce").fillna(0).astype(int)
 staff_full["Conduct Points This Week"] = pd.to_numeric(staff_full["Conduct Points This Week"], errors="coerce").fillna(0).astype(int)
@@ -181,7 +196,7 @@ st.dataframe(dept_summary.sort_values("House Points", ascending=False))
 st.subheader("📊 Top Staff (House Points)")
 safe_plot(staff_full.sort_values("House Points This Week", ascending=True).tail(15),
           x="House Points This Week", y="Teacher", text="House Points This Week",
-          title="Top 15 Staff", orientation="h")
+          title="Top 15 Staff (House Points)", orientation="h")
 
 if not house_df.empty:
     student_top = house_df.groupby(["Pupil Name"], as_index=False)["Points"].sum().rename(columns={"Points": "House Points"})
@@ -192,12 +207,14 @@ if not house_df.empty:
 if not house_df.empty:
     house_points = house_df.groupby("House", as_index=False)["Points"].sum().rename(columns={"Points": "House Points"})
     st.subheader("🏠 House Points by House")
-    safe_plot(house_points, x="House", y="House Points", text="House Points", title="House Points by House", color="House", color_map=HOUSE_COLORS)
+    safe_plot(house_points, x="House", y="House Points", text="House Points", title="House Points by House",
+              color="House", color_map=HOUSE_COLORS)
 
 if not conduct_df.empty:
     conduct_points = conduct_df.groupby("House", as_index=False)["Points"].count().rename(columns={"Points": "Conduct Points"})
     st.subheader("⚠️ Conduct Points by House")
-    safe_plot(conduct_points, x="House", y="Conduct Points", text="Conduct Points", title="Conduct Points by House", color="House", color_map=HOUSE_COLORS)
+    safe_plot(conduct_points, x="House", y="Conduct Points", text="Conduct Points", title="Conduct Points by House",
+              color="House", color_map=HOUSE_COLORS)
 
 # -----------------------
 # CATEGORY FREQUENCY
@@ -205,12 +222,14 @@ if not conduct_df.empty:
 if not house_df.empty:
     cat_freq = house_df.groupby("Category", as_index=False)["Points"].count().rename(columns={"Points": "Frequency"})
     st.subheader("📘 House Points Category Frequency")
-    safe_plot(cat_freq.sort_values("Frequency", ascending=False), x="Category", y="Frequency", text="Frequency", title="House Category Frequency")
+    safe_plot(cat_freq.sort_values("Frequency", ascending=False),
+              x="Category", y="Frequency", text="Frequency", title="House Category Frequency")
 
 if not conduct_df.empty:
     cat_freq_conduct = conduct_df.groupby("Category", as_index=False)["Points"].count().rename(columns={"Points": "Frequency"})
     st.subheader("📕 Conduct Points Category Frequency")
-    safe_plot(cat_freq_conduct.sort_values("Frequency", ascending=False), x="Category", y="Frequency", text="Frequency", title="Conduct Category Frequency")
+    safe_plot(cat_freq_conduct.sort_values("Frequency", ascending=False),
+              x="Category", y="Frequency", text="Frequency", title="Conduct Category Frequency")
 
 # -----------------------
 # EXCEL DOWNLOAD
