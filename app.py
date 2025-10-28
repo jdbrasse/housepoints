@@ -12,16 +12,6 @@ from PIL import Image
 # -----------------------
 st.set_page_config(page_title="House Points Tracker", layout="wide")
 DEFAULT_WEEKLY_TARGET = 15
-HOUSE_COLOURS = {
-    "B": "red",
-    "BRUNEL": "red",
-    "D": "blue",
-    "DICKENS": "blue",
-    "L": "yellow",
-    "LIDDELL": "yellow",
-    "W": "purple",
-    "WILBERFORCE": "purple"
-}
 EXPECTED_COLS = [
     "Pupil Name", "House", "Form", "Year", "Reward", "Category", "Points",
     "Date", "Reward Description", "Teacher", "Dept", "Subject", "Email"
@@ -45,7 +35,7 @@ PERMANENT_STAFF = pd.DataFrame({
 # Display School Logo
 # -----------------------
 try:
-    logo = Image.open("logo.png")
+    logo = Image.open("logo.png")  # Ensure logo.png is in repo root
     st.image(logo, width=150)
 except:
     st.warning("Logo not found. Make sure logo.png is in the repo root.")
@@ -57,23 +47,14 @@ def load_and_clean(uploaded_file, week_label):
     df = pd.read_csv(uploaded_file, header=0, dtype=str)
     if len(df.columns) == len(EXPECTED_COLS):
         df.columns = EXPECTED_COLS
-    else:
-        # Try to add any missing expected columns to prevent key errors
-        for col in EXPECTED_COLS:
-            if col not in df.columns:
-                df[col] = ""
-
-    # Clean and normalise
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df["Points"] = pd.to_numeric(df["Points"], errors="coerce").fillna(0).astype(int)
     df["Category"] = df["Category"].astype(str).str.strip().str.title()
     df["Teacher"] = df["Teacher"].astype(str).str.strip()
-    df["Dept"] = df["Dept"].astype(str).str.strip() if "Dept" in df.columns else ""
+    df["Dept"] = df["Dept"].astype(str).str.strip()
     df["Value"] = df["Reward"].astype(str).str.strip()
     df["Pupil Name"] = df["Pupil Name"].astype(str).str.strip()
     df["Email"] = df.get("Email", "")
-    df["House"] = df["House"].astype(str).str.strip().str.upper()
-    df["Form"] = df["Form"].astype(str).str.strip().str.upper()
     df["Week"] = week_label
     return df
 
@@ -89,34 +70,22 @@ def aggregate_weekly(df, week_label, target):
     house_mask, conduct_mask = detect_point_types(df)
     house_df = df[house_mask].copy() if house_mask.any() else df.copy()
     conduct_df = df[conduct_mask].copy() if conduct_mask.any() else pd.DataFrame(columns=df.columns)
-
     staff_house = house_df.groupby("Teacher", as_index=False)["Points"].sum().rename(columns={"Points":"House Points This Week"})
     staff_conduct = conduct_df.groupby("Teacher", as_index=False)["Points"].sum().rename(columns={"Points":"Conduct Points This Week"})
-
-    if "Dept" in house_df.columns:
-        dept_house = house_df.groupby("Dept", as_index=False)["Points"].sum().rename(columns={"Points":"House Points This Week"})
-    else:
-        dept_house = pd.DataFrame(columns=["Dept","House Points This Week"])
-
-    student_house = house_df.groupby(["Pupil Name","Year","Form","House"], as_index=False)["Points"].sum().rename(columns={"Points":"House Points This Week"})
+    dept_house = house_df.groupby("Dept", as_index=False)["Points"].sum().rename(columns={"Points":"House Points This Week"})
+    student_house = house_df.groupby(["Pupil Name","Year","Form"], as_index=False)["Points"].sum().rename(columns={"Points":"House Points This Week"})
     value_school = house_df.groupby("Value", as_index=False)["Points"].count().rename(columns={"Points":"Count"})
-
     staff_summary = staff_house.merge(staff_conduct, on="Teacher", how="outer").fillna(0)
-
-    # Merge with department if present
-    if "Dept" in house_df.columns:
-        teacher_dept = house_df.groupby("Teacher")["Dept"].agg(lambda s: s.mode().iloc[0] if not s.mode().empty else "").reset_index()
+    teacher_dept = house_df.groupby("Teacher")["Dept"].agg(lambda s: s.mode().iloc[0] if not s.mode().empty else "").reset_index()
+    if "Dept" in teacher_dept.columns:
         staff_summary = staff_summary.merge(teacher_dept, on="Teacher", how="left")
-    else:
-        staff_summary["Dept"] = ""
+    
+    # 🔹 Embed permanent staff list (add missing staff with zero points)
+    staff_summary = PERMANENT_STAFF.merge(staff_summary, on=["Teacher", "Dept"], how="left").fillna(0)
 
-    # Merge with permanent staff list safely
-    staff_summary = PERMANENT_STAFF.merge(staff_summary, on=["Teacher","Dept"], how="left").fillna(0)
     staff_summary["UnderTargetThisWeek"] = staff_summary["House Points This Week"] < target
     staff_summary["Week"] = week_label
-
     student_house = student_house.sort_values("House Points This Week", ascending=False)
-
     return {
         "staff_summary": staff_summary,
         "dept_house": dept_house,
@@ -149,6 +118,7 @@ def update_cumulative_tracker(staff_weekly_df, cumulative_path):
     return cum, staff_stats
 
 def to_excel_bytes(summaries: dict):
+    from openpyxl import Workbook
     out = BytesIO()
     with pd.ExcelWriter(out, engine="openpyxl") as writer:
         summaries["staff_summary"].to_excel(writer, sheet_name="Staff Summary", index=False)
@@ -223,10 +193,7 @@ if uploaded_file is not None:
 
         # Department Summary
         st.subheader("Department Summary (Weekly)")
-        if not aggregates["dept_house"].empty:
-            st.dataframe(aggregates["dept_house"].sort_values("House Points This Week", ascending=False))
-        else:
-            st.info("No department data available in this file.")
+        st.dataframe(aggregates["dept_house"].sort_values("House Points This Week", ascending=False))
 
         # Top Students
         st.subheader("Top Students (Weekly House Points)")
@@ -237,11 +204,10 @@ if uploaded_file is not None:
                 student_df.head(15),
                 x="House Points This Week",
                 y="Pupil Name",
-                color="House",
-                color_discrete_map=HOUSE_COLOURS,
                 orientation='h',
                 text="House Points This Week",
-                title="Top Students (Week)"
+                hover_data={"Pupil Name": True, "House Points This Week": True, "Year": True, "Form": True},
+                title="Top Students (week)"
             )
             fig_students.update_traces(texttemplate="%{text}", textposition="outside")
             st.plotly_chart(fig_students, use_container_width=True)
@@ -254,32 +220,13 @@ if uploaded_file is not None:
                 y="Teacher",
                 orientation='h',
                 text="House Points This Week",
-                hover_data={"Teacher": True, "Dept": True},
-                title="Top Staff (Week)"
+                hover_data={"Teacher": True, "House Points This Week": True, "Dept": True},
+                title="Top Staff (week)"
             )
             fig_staff.update_traces(texttemplate="%{text}", textposition="outside")
             st.plotly_chart(fig_staff, use_container_width=True)
 
-        # Top Performing Forms per House
-        st.subheader("Top Performing Forms per House")
-        form_points = aggregates["raw_house_df"].groupby(["House","Form"], as_index=False)["Points"].sum()
-        top_forms = form_points.sort_values(["House","Points"], ascending=[True,False]).groupby("House").head(3)
-        st.dataframe(top_forms)
-        if not top_forms.empty:
-            fig_forms = px.bar(
-                top_forms,
-                x="Points",
-                y="Form",
-                color="House",
-                color_discrete_map=HOUSE_COLOURS,
-                orientation="h",
-                text="Points",
-                title="Top 3 Forms in Each House"
-            )
-            fig_forms.update_traces(texttemplate="%{text}", textposition="outside")
-            st.plotly_chart(fig_forms, use_container_width=True)
-
-        # Reward Values Frequency
+        # Values Frequency (Weekly)
         st.subheader("Reward Values Frequency (Weekly)")
         val_df = aggregates["value_school"].sort_values("Count", ascending=False)
         st.dataframe(val_df)
@@ -288,10 +235,51 @@ if uploaded_file is not None:
                 val_df,
                 values="Count",
                 names="Value",
-                title="Values distribution (Week)",
+                title="Values distribution (week)",
                 hover_data={"Count": True}
             )
             st.plotly_chart(fig_values, use_container_width=True)
+
+        # Interactive Value Frequency Chart
+        st.subheader("Value Frequency — House vs Conduct Points (Interactive)")
+        departments = sorted(df["Dept"].dropna().unique())
+        selected_dept = st.multiselect("Select Department (leave empty for all):", departments)
+        week_labels = sorted(df['Week'].dropna().unique())
+        selected_week = st.selectbox("Select Week to filter (leave blank for all)", options=np.append("All", week_labels))
+
+        filtered_df = df.copy()
+        if selected_dept:
+            filtered_df = filtered_df[filtered_df["Dept"].isin(selected_dept)]
+        if selected_week != "All":
+            filtered_df = filtered_df[filtered_df["Week"] == selected_week]
+
+        house_df_filtered = filtered_df[filtered_df["Category"].str.contains("house|reward", case=False, na=False)]
+        conduct_df_filtered = filtered_df[filtered_df["Category"].str.contains("conduct|behaviour", case=False, na=False)]
+
+        house_freq = house_df_filtered.groupby("Value")["Points"].count().reset_index()
+        house_freq.rename(columns={"Points":"Count"}, inplace=True)
+        house_freq["Category"] = "House Points"
+
+        conduct_freq = conduct_df_filtered.groupby("Value")["Points"].count().reset_index()
+        conduct_freq.rename(columns={"Points":"Count"}, inplace=True)
+        conduct_freq["Category"] = "Conduct Points"
+
+        freq_df = pd.concat([house_freq, conduct_freq], ignore_index=True)
+
+        if not freq_df.empty:
+            fig_freq = px.bar(
+                freq_df,
+                x="Value",
+                y="Count",
+                color="Category",
+                barmode="group",
+                text="Count",
+                hover_data={"Value": True, "Count": True, "Category": True},
+                title="Frequency of Each Value (Filtered by Department & Week)"
+            )
+            fig_freq.update_traces(texttemplate="%{text}", textposition="outside")
+            fig_freq.update_layout(xaxis_title="Value", yaxis_title="Count", xaxis_tickangle=-45)
+            st.plotly_chart(fig_freq, use_container_width=True)
 
         # Download Excel Summary
         excel_bytes = to_excel_bytes(aggregates)
