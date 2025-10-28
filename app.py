@@ -45,16 +45,30 @@ except:
 # -----------------------
 def load_and_clean(uploaded_file, week_label):
     df = pd.read_csv(uploaded_file, header=0, dtype=str)
+
+    # Fix column naming issues (Dep -> Dept)
+    df.columns = [c.strip() for c in df.columns]
+    if "Dep" in df.columns and "Dept" not in df.columns:
+        df.rename(columns={"Dep": "Dept"}, inplace=True)
+
+    # Match expected column order if possible
     if len(df.columns) == len(EXPECTED_COLS):
         df.columns = EXPECTED_COLS
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df["Points"] = pd.to_numeric(df["Points"], errors="coerce").fillna(0).astype(int)
-    df["Category"] = df["Category"].astype(str).str.strip().str.title()
-    df["Teacher"] = df["Teacher"].astype(str).str.strip()
-    df["Dept"] = df["Dept"].astype(str).str.strip()
-    df["Value"] = df["Reward"].astype(str).str.strip()
-    df["Pupil Name"] = df["Pupil Name"].astype(str).str.strip()
+
+    # Clean and normalise
+    if "Date" in df.columns:
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    if "Points" in df.columns:
+        df["Points"] = pd.to_numeric(df["Points"], errors="coerce").fillna(0).astype(int)
+
+    df["Category"] = df.get("Category", "").astype(str).str.strip().str.title()
+    df["Teacher"] = df.get("Teacher", "").astype(str).str.strip()
+    df["Dept"] = df.get("Dept", "").astype(str).str.strip()
+    df["Value"] = df.get("Reward", "").astype(str).str.strip()
+    df["Pupil Name"] = df.get("Pupil Name", "").astype(str).str.strip()
     df["Email"] = df.get("Email", "")
+    df["House"] = df.get("House", "").astype(str).str.strip().str.upper()
+    df["Form"] = df.get("Form", "").astype(str).str.strip().str.upper()
     df["Week"] = week_label
     return df
 
@@ -70,22 +84,26 @@ def aggregate_weekly(df, week_label, target):
     house_mask, conduct_mask = detect_point_types(df)
     house_df = df[house_mask].copy() if house_mask.any() else df.copy()
     conduct_df = df[conduct_mask].copy() if conduct_mask.any() else pd.DataFrame(columns=df.columns)
+
     staff_house = house_df.groupby("Teacher", as_index=False)["Points"].sum().rename(columns={"Points":"House Points This Week"})
     staff_conduct = conduct_df.groupby("Teacher", as_index=False)["Points"].sum().rename(columns={"Points":"Conduct Points This Week"})
     dept_house = house_df.groupby("Dept", as_index=False)["Points"].sum().rename(columns={"Points":"House Points This Week"})
     student_house = house_df.groupby(["Pupil Name","Year","Form"], as_index=False)["Points"].sum().rename(columns={"Points":"House Points This Week"})
     value_school = house_df.groupby("Value", as_index=False)["Points"].count().rename(columns={"Points":"Count"})
+
     staff_summary = staff_house.merge(staff_conduct, on="Teacher", how="outer").fillna(0)
     teacher_dept = house_df.groupby("Teacher")["Dept"].agg(lambda s: s.mode().iloc[0] if not s.mode().empty else "").reset_index()
+
     if "Dept" in teacher_dept.columns:
         staff_summary = staff_summary.merge(teacher_dept, on="Teacher", how="left")
-    
-    # 🔹 Embed permanent staff list (add missing staff with zero points)
+
+    # 🔹 Embed permanent staff list (fill missing with 0)
     staff_summary = PERMANENT_STAFF.merge(staff_summary, on=["Teacher", "Dept"], how="left").fillna(0)
 
     staff_summary["UnderTargetThisWeek"] = staff_summary["House Points This Week"] < target
     staff_summary["Week"] = week_label
     student_house = student_house.sort_values("House Points This Week", ascending=False)
+
     return {
         "staff_summary": staff_summary,
         "dept_house": dept_house,
@@ -118,7 +136,6 @@ def update_cumulative_tracker(staff_weekly_df, cumulative_path):
     return cum, staff_stats
 
 def to_excel_bytes(summaries: dict):
-    from openpyxl import Workbook
     out = BytesIO()
     with pd.ExcelWriter(out, engine="openpyxl") as writer:
         summaries["staff_summary"].to_excel(writer, sheet_name="Staff Summary", index=False)
