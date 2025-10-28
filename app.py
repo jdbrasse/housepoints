@@ -4,6 +4,7 @@ import plotly.express as px
 from datetime import datetime
 import os
 from PIL import Image
+from io import StringIO
 
 # -----------------------
 # App configuration & style
@@ -61,22 +62,48 @@ def detect_point_types(df):
         conduct_mask = df["Points"] < 0
     return house_mask, conduct_mask
 
-# -----------------------
-# Sidebar
-# -----------------------
-st.sidebar.header("⚙️ Settings")
-week_label = st.sidebar.text_input("Week label", value=datetime.now().strftime("%Y-%m-%d"))
-st.sidebar.write("### 📤 Upload weekly CSV")
-uploaded = st.sidebar.file_uploader("Choose CSV file", type=["csv"])
-st.sidebar.markdown("---")
-st.sidebar.caption("Expected columns:")
-st.sidebar.write(EXPECTED_COLS)
+def get_csv_template():
+    """Return a blank CSV template as bytes for download."""
+    sample_data = pd.DataFrame(columns=EXPECTED_COLS)
+    csv_buffer = StringIO()
+    sample_data.to_csv(csv_buffer, index=False)
+    return csv_buffer.getvalue().encode("utf-8")
 
 # -----------------------
-# Main
+# Title Section
 # -----------------------
 st.title("🏫 Weekly House & Conduct Dashboard")
 
+# CSV Template Download
+st.download_button(
+    label="📄 Download CSV Template",
+    data=get_csv_template(),
+    file_name="house_points_template.csv",
+    mime="text/csv",
+    help="Download a blank CSV with correct headers for data entry."
+)
+
+st.markdown(
+    """
+    ### 📤 Upload your weekly CSV file  
+    Click **Browse files** below to select your data file.
+    """
+)
+
+uploaded = st.file_uploader("Browse for your CSV file", type=["csv"], label_visibility="collapsed")
+
+# -----------------------
+# Settings
+# -----------------------
+st.sidebar.header("⚙️ Settings")
+week_label = st.sidebar.text_input("Week label", value=datetime.now().strftime("%Y-%m-%d"))
+st.sidebar.markdown("---")
+st.sidebar.caption("Expected CSV columns:")
+st.sidebar.write(EXPECTED_COLS)
+
+# -----------------------
+# Main Analysis
+# -----------------------
 if uploaded:
     df = load_and_clean(uploaded, week_label)
     st.success(f"✅ Loaded {len(df):,} records for {week_label}")
@@ -152,4 +179,4 @@ if uploaded:
             st.plotly_chart(fig_net, use_container_width=True)
 
 else:
-    st.info("👈 Please upload your weekly CSV file using the sidebar to view charts.")
+    st.info("👆 Please upload your weekly CSV file above to begin.")
