@@ -50,7 +50,7 @@ def load_and_clean(file):
     df["Category"] = df["Category"].astype(str).str.strip().str.lower()
     df["Points"] = pd.to_numeric(df["Points"], errors="coerce").fillna(0).astype(int)
     df["House"] = df["House"].astype(str).str.strip().str.upper().map(HOUSE_MAPPING)
-    df["Form"] = df["Form"].astype(str).str.strip()
+    df["Form"] = df["Form"].astype(str).str.strip().str.upper()
     df["Year"] = df["Year"].astype(str).str.strip()
     return df
 
@@ -100,9 +100,15 @@ if uploaded_file is not None:
                 .sum().reset_index().rename(columns={"Points":"House Points"})
             )
 
-            # House totals (colour coded)
+            # House totals
             house_points = house_df.groupby("House")["Points"].sum().reset_index()
-            house_points["Color"] = house_points["House"].map(HOUSE_COLORS)
+
+            # Form totals (NEW)
+            form_house = (
+                house_df.groupby(["Form","House"])["Points"].sum().reset_index()
+                .rename(columns={"Points":"House Points"})
+                .sort_values("House Points", ascending=False)
+            )
 
             # Category frequency
             cat_freq = (
@@ -130,6 +136,11 @@ if uploaded_file is not None:
                           color="House", color_map=HOUSE_COLORS,
                           title="House Points by House")
 
+            # NEW: House Points by Form
+            st.subheader("🏫 House Points by Form")
+            safe_plot(form_house, x="Form", y="House Points", text="House Points",
+                      color="House", color_map=HOUSE_COLORS, title="House Points by Form")
+
             st.subheader("📘 House Points Category Frequency")
             safe_plot(cat_freq, x="Category", y="Frequency", text="Frequency",
                       title="House Point Categories Frequency")
@@ -154,7 +165,13 @@ if uploaded_file is not None:
                 conduct_df.groupby("House")["Points"].count().reset_index()
                 .rename(columns={"Points": "Conduct Points"})
             )
-            house_conduct["Color"] = house_conduct["House"].map(HOUSE_COLORS)
+
+            # Form totals (NEW)
+            form_conduct = (
+                conduct_df.groupby(["Form","House"])["Points"].count().reset_index()
+                .rename(columns={"Points":"Conduct Points"})
+                .sort_values("Conduct Points", ascending=False)
+            )
 
             cat_freq_conduct = (
                 conduct_df.groupby("Category")["Points"].count().reset_index()
@@ -178,6 +195,11 @@ if uploaded_file is not None:
             with col8:
                 safe_plot(cat_freq_conduct, x="Category", y="Frequency", text="Frequency",
                           title="Conduct Categories Frequency")
+
+            # NEW: Conduct Points by Form
+            st.subheader("🏫 Conduct Points by Form")
+            safe_plot(form_conduct, x="Form", y="Conduct Points", text="Conduct Points",
+                      color="House", color_map=HOUSE_COLORS, title="Conduct Points by Form")
 
         # --- WEEKLY STAFF SUMMARY ---
         st.subheader("📅 Weekly Staff Summary (House Points)")
