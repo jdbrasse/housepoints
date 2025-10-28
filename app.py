@@ -57,13 +57,18 @@ def load_and_clean(uploaded_file, week_label):
     df = pd.read_csv(uploaded_file, header=0, dtype=str)
     if len(df.columns) == len(EXPECTED_COLS):
         df.columns = EXPECTED_COLS
+    else:
+        # Try to add any missing expected columns to prevent key errors
+        for col in EXPECTED_COLS:
+            if col not in df.columns:
+                df[col] = ""
 
     # Clean and normalise
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df["Points"] = pd.to_numeric(df["Points"], errors="coerce").fillna(0).astype(int)
     df["Category"] = df["Category"].astype(str).str.strip().str.title()
     df["Teacher"] = df["Teacher"].astype(str).str.strip()
-    df["Dept"] = df["Dept"].astype(str).str.strip()
+    df["Dept"] = df["Dept"].astype(str).str.strip() if "Dept" in df.columns else ""
     df["Value"] = df["Reward"].astype(str).str.strip()
     df["Pupil Name"] = df["Pupil Name"].astype(str).str.strip()
     df["Email"] = df.get("Email", "")
@@ -84,19 +89,28 @@ def aggregate_weekly(df, week_label, target):
     house_mask, conduct_mask = detect_point_types(df)
     house_df = df[house_mask].copy() if house_mask.any() else df.copy()
     conduct_df = df[conduct_mask].copy() if conduct_mask.any() else pd.DataFrame(columns=df.columns)
+
     staff_house = house_df.groupby("Teacher", as_index=False)["Points"].sum().rename(columns={"Points":"House Points This Week"})
     staff_conduct = conduct_df.groupby("Teacher", as_index=False)["Points"].sum().rename(columns={"Points":"Conduct Points This Week"})
-    dept_house = house_df.groupby("Dept", as_index=False)["Points"].sum().rename(columns={"Points":"House Points This Week"})
+
+    if "Dept" in house_df.columns:
+        dept_house = house_df.groupby("Dept", as_index=False)["Points"].sum().rename(columns={"Points":"House Points This Week"})
+    else:
+        dept_house = pd.DataFrame(columns=["Dept","House Points This Week"])
+
     student_house = house_df.groupby(["Pupil Name","Year","Form","House"], as_index=False)["Points"].sum().rename(columns={"Points":"House Points This Week"})
     value_school = house_df.groupby("Value", as_index=False)["Points"].count().rename(columns={"Points":"Count"})
 
-    # Combine and fill missing staff
     staff_summary = staff_house.merge(staff_conduct, on="Teacher", how="outer").fillna(0)
-    teacher_dept = house_df.groupby("Teacher")["Dept"].agg(lambda s: s.mode().iloc[0] if not s.mode().empty else "").reset_index()
-    if "Dept" in teacher_dept.columns:
-        staff_summary = staff_summary.merge(teacher_dept, on="Teacher", how="left")
 
-    # Merge with permanent staff list
+    # Merge with department if present
+    if "Dept" in house_df.columns:
+        teacher_dept = house_df.groupby("Teacher")["Dept"].agg(lambda s: s.mode().iloc[0] if not s.mode().empty else "").reset_index()
+        staff_summary = staff_summary.merge(teacher_dept, on="Teacher", how="left")
+    else:
+        staff_summary["Dept"] = ""
+
+    # Merge with permanent staff list safely
     staff_summary = PERMANENT_STAFF.merge(staff_summary, on=["Teacher","Dept"], how="left").fillna(0)
     staff_summary["UnderTargetThisWeek"] = staff_summary["House Points This Week"] < target
     staff_summary["Week"] = week_label
@@ -209,7 +223,10 @@ if uploaded_file is not None:
 
         # Department Summary
         st.subheader("Department Summary (Weekly)")
-        st.dataframe(aggregates["dept_house"].sort_values("House Points This Week", ascending=False))
+        if not aggregates["dept_house"].empty:
+            st.dataframe(aggregates["dept_house"].sort_values("House Points This Week", ascending=False))
+        else:
+            st.info("No department data available in this file.")
 
         # Top Students
         st.subheader("Top Students (Weekly House Points)")
@@ -262,7 +279,7 @@ if uploaded_file is not None:
             fig_forms.update_traces(texttemplate="%{text}", textposition="outside")
             st.plotly_chart(fig_forms, use_container_width=True)
 
-        # Values Frequency (Weekly)
+        # Reward Values Frequency
         st.subheader("Reward Values Frequency (Weekly)")
         val_df = aggregates["value_school"].sort_values("Count", ascending=False)
         st.dataframe(val_df)
