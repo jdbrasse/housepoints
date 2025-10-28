@@ -10,6 +10,7 @@ st.write("Upload your weekly CSV file below to generate the full analysis.")
 
 DEFAULT_WEEKLY_TARGET = 15
 HOUSE_MAPPING = {"B": "Brunel", "L": "Liddell", "D": "Dickens", "W": "Wilberforce"}
+HOUSE_COLORS = {"Brunel": "#FF0000", "Dickens": "#0000FF", "Liddell": "#FFD700", "Wilberforce": "#800080"}
 
 # --- EMBEDDED STAFF INITIALS (from your Excel, Column A) ---
 PERMANENT_STAFF = pd.DataFrame({
@@ -54,11 +55,14 @@ def load_and_clean(file):
     return df
 
 # --- SAFE PLOT FUNCTION ---
-def safe_plot(data, x, y, title, text=None, orientation="v"):
+def safe_plot(data, x, y, title, text=None, orientation="v", color=None, color_map=None):
     if data.empty:
         st.info(f"No data available for {title}")
         return
-    fig = px.bar(data, x=x, y=y, text=text, orientation=orientation, title=title)
+    fig = px.bar(
+        data, x=x, y=y, text=text, orientation=orientation, title=title,
+        color=color, color_discrete_map=color_map
+    )
     fig.update_traces(texttemplate="%{text}", textposition="outside")
     fig.update_layout(title=dict(font=dict(size=20)), xaxis_title=None, yaxis_title=None)
     st.plotly_chart(fig, use_container_width=True)
@@ -68,16 +72,9 @@ if uploaded_file is not None:
     try:
         df = load_and_clean(uploaded_file)
 
-        # --- Debugging Info ---
-        st.subheader("🔍 File Structure Check")
-        st.write("Columns detected:", df.columns.tolist())
-
         # --- Split into house vs conduct ---
         house_df = df[df["Reward"].str.contains("house", case=False, na=False)]
         conduct_df = df[df["Reward"].str.contains("conduct", case=False, na=False)]
-
-        st.write(f"🏠 House points rows detected: {len(house_df)}")
-        st.write(f"⚠️ Conduct points rows detected: {len(conduct_df)}")
 
         # --- HOUSE POINTS ANALYSIS ---
         if not house_df.empty:
@@ -88,8 +85,6 @@ if uploaded_file is not None:
                 house_df.groupby("Teacher")["Points"].sum().reset_index()
                 .rename(columns={"Points": "House Points This Week"})
             )
-
-            # Merge with permanent list to ensure all initials appear
             staff_house = PERMANENT_STAFF.merge(staff_house, on="Teacher", how="left").fillna(0)
             staff_house = staff_house.sort_values("House Points This Week", ascending=False)
 
@@ -105,8 +100,9 @@ if uploaded_file is not None:
                 .sum().reset_index().rename(columns={"Points":"House Points"})
             )
 
-            # House totals
+            # House totals (colour coded)
             house_points = house_df.groupby("House")["Points"].sum().reset_index()
+            house_points["Color"] = house_points["House"].map(HOUSE_COLORS)
 
             # Category frequency
             cat_freq = (
@@ -131,6 +127,7 @@ if uploaded_file is not None:
                           title="Top 15 Students (House Points)")
             with col4:
                 safe_plot(house_points, x="House", y="Points", text="Points",
+                          color="House", color_map=HOUSE_COLORS,
                           title="House Points by House")
 
             st.subheader("📘 House Points Category Frequency")
@@ -145,7 +142,6 @@ if uploaded_file is not None:
                 conduct_df.groupby("Teacher")["Points"].count().reset_index()
                 .rename(columns={"Points": "Conduct Points This Week"})
             )
-
             staff_conduct = PERMANENT_STAFF.merge(staff_conduct, on="Teacher", how="left").fillna(0)
             staff_conduct = staff_conduct.sort_values("Conduct Points This Week", ascending=False)
 
@@ -158,6 +154,7 @@ if uploaded_file is not None:
                 conduct_df.groupby("House")["Points"].count().reset_index()
                 .rename(columns={"Points": "Conduct Points"})
             )
+            house_conduct["Color"] = house_conduct["House"].map(HOUSE_COLORS)
 
             cat_freq_conduct = (
                 conduct_df.groupby("Category")["Points"].count().reset_index()
@@ -176,12 +173,13 @@ if uploaded_file is not None:
             col7, col8 = st.columns(2)
             with col7:
                 safe_plot(house_conduct, x="House", y="Conduct Points", text="Conduct Points",
+                          color="House", color_map=HOUSE_COLORS,
                           title="Conduct Points by House")
             with col8:
                 safe_plot(cat_freq_conduct, x="Category", y="Frequency", text="Frequency",
                           title="Conduct Categories Frequency")
 
-        # --- WEEKLY STAFF SUMMARY (SHOW ALL INITIALS) ---
+        # --- WEEKLY STAFF SUMMARY ---
         st.subheader("📅 Weekly Staff Summary (House Points)")
         full_summary = PERMANENT_STAFF.merge(
             staff_house[["Teacher","House Points This Week"]], on="Teacher", how="left"
