@@ -3,35 +3,32 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 
-# ---------------------------
-# CONFIG
-# ---------------------------
+# --- CONFIG ---
 st.set_page_config(page_title="House & Conduct Points Analysis", layout="wide")
 st.title("🏫 House & Conduct Points Analysis Dashboard")
-st.write("Upload your weekly CSV file to generate the analysis below.")
+st.write("Upload your weekly CSV file below to generate the full analysis.")
 
 DEFAULT_WEEKLY_TARGET = 15
 HOUSE_MAPPING = {"B": "Brunel", "L": "Liddell", "D": "Dickens", "W": "Wilberforce"}
 
-# ---------------------------
-# EMBEDDED STAFF INITIALS
-# ---------------------------
+# --- EMBEDDED STAFF INITIALS (from your Excel, Column A) ---
 PERMANENT_STAFF = pd.DataFrame({
     "Teacher": [
-        "LJO", "POT", "LTA", "JSI", "MPU", "NIQ", "LGS", "LTH", "VSB", "FA",
-        "JMA", "RC", "VT", "EPO", "TNE", "IMO", "NPE", "MO", "CL", "ACA",
-        "LHO", "SBR", "DBE", "CLT", "JHO", "BW", "DOL", "DE", "VM"
+        "LJO","POT","LTA","JSI","MPU","NIQ","LGS","LTH","VSB","FA","JMA","RC","VT",
+        "EPO","TNE","IMO","NPE","MO","CL","ACA","LHO","SBR","DBE","CLT","JHO","BW",
+        "DOL","DE","VM","DBR","EMC","MRO","HME","DWI","NHE","CTU","JRO","JWA","EWE",
+        "GSM","MSA","HST","EBA","CDO","EFO","SSP","TDU","KFE","WRO","SCO","ECA",
+        "SMA","RPO","MRA","JPO","SMI","LMI","LPE","EBO","JBO","MFI","LST","SSA",
+        "RFI","MAW","JHA","SWA","DGU","JWI","RWI","ACO","MMI","GDO","RLI","HWA",
+        "LHU","HRO","EPO2","JSO","JFO","TSM","RBA","RRA","PRA","ELO","CWA","NMI",
+        "AFA","SSA2","TLE","EBO2","MMO","VLO","MPO","JMU","KST","DTA","RGA"
     ]
 })
 
-# ---------------------------
-# FILE UPLOAD
-# ---------------------------
-uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
+# --- FILE UPLOAD ---
+uploaded_file = st.file_uploader("Upload weekly CSV file", type=["csv"])
 
-# ---------------------------
-# DATA CLEANING
-# ---------------------------
+# --- DATA CLEANING ---
 def load_and_clean(file):
     df = pd.read_csv(file)
     df.columns = df.columns.str.strip()
@@ -39,7 +36,6 @@ def load_and_clean(file):
         "Pupil Name","House","Form","Year","Reward","Category",
         "Points","Date","Reward Description","Teacher","Dep","Subject"
     ]
-    # rename if "Dep" missing or other issues
     if len(df.columns) >= len(expected_columns):
         df.columns = expected_columns
     else:
@@ -57,9 +53,7 @@ def load_and_clean(file):
     df["Year"] = df["Year"].astype(str).str.strip()
     return df
 
-# ---------------------------
-# SAFE PLOT FUNCTION
-# ---------------------------
+# --- SAFE PLOT FUNCTION ---
 def safe_plot(data, x, y, title, text=None, orientation="v"):
     if data.empty:
         st.info(f"No data available for {title}")
@@ -69,29 +63,23 @@ def safe_plot(data, x, y, title, text=None, orientation="v"):
     fig.update_layout(title=dict(font=dict(size=20)), xaxis_title=None, yaxis_title=None)
     st.plotly_chart(fig, use_container_width=True)
 
-# ---------------------------
-# MAIN APP
-# ---------------------------
+# --- MAIN APP ---
 if uploaded_file is not None:
     try:
         df = load_and_clean(uploaded_file)
 
-        # --- DEBUGGING INFO ---
+        # --- Debugging Info ---
         st.subheader("🔍 File Structure Check")
         st.write("Columns detected:", df.columns.tolist())
-        st.write("Unique Reward values:", df["Reward"].unique())
-        st.write("Unique House values:", df["House"].unique())
 
-        # --- SPLIT INTO HOUSE VS CONDUCT ---
+        # --- Split into house vs conduct ---
         house_df = df[df["Reward"].str.contains("house", case=False, na=False)]
         conduct_df = df[df["Reward"].str.contains("conduct", case=False, na=False)]
 
         st.write(f"🏠 House points rows detected: {len(house_df)}")
         st.write(f"⚠️ Conduct points rows detected: {len(conduct_df)}")
 
-        # ---------------------------
-        # HOUSE POINTS ANALYSIS
-        # ---------------------------
+        # --- HOUSE POINTS ANALYSIS ---
         if not house_df.empty:
             st.subheader("🏠 House Points Summary")
 
@@ -101,7 +89,7 @@ if uploaded_file is not None:
                 .rename(columns={"Points": "House Points This Week"})
             )
 
-            # Merge with permanent staff initials (fill missing)
+            # Merge with permanent list to ensure all initials appear
             staff_house = PERMANENT_STAFF.merge(staff_house, on="Teacher", how="left").fillna(0)
             staff_house = staff_house.sort_values("House Points This Week", ascending=False)
 
@@ -130,23 +118,26 @@ if uploaded_file is not None:
             # --- CHARTS ---
             col1, col2 = st.columns(2)
             with col1:
-                safe_plot(staff_house.head(15), x="Teacher", y="House Points This Week", text="House Points This Week", title="Top 15 Staff (House Points)")
+                safe_plot(staff_house.head(15), x="Teacher", y="House Points This Week",
+                          text="House Points This Week", title="Top 15 Staff (House Points)")
             with col2:
-                safe_plot(dept_house, x="Dep", y="House Points", text="House Points", title="House Points by Department")
+                safe_plot(dept_house, x="Dep", y="House Points", text="House Points",
+                          title="House Points by Department")
 
             col3, col4 = st.columns(2)
             with col3:
                 safe_plot(student_house.sort_values("House Points", ascending=False).head(15),
-                          x="Pupil Name", y="House Points", text="House Points", title="Top 15 Students (House Points)")
+                          x="Pupil Name", y="House Points", text="House Points",
+                          title="Top 15 Students (House Points)")
             with col4:
-                safe_plot(house_points, x="House", y="Points", text="Points", title="House Points by House")
+                safe_plot(house_points, x="House", y="Points", text="Points",
+                          title="House Points by House")
 
             st.subheader("📘 House Points Category Frequency")
-            safe_plot(cat_freq, x="Category", y="Frequency", text="Frequency", title="House Point Categories Frequency")
+            safe_plot(cat_freq, x="Category", y="Frequency", text="Frequency",
+                      title="House Point Categories Frequency")
 
-        # ---------------------------
-        # CONDUCT POINTS ANALYSIS
-        # ---------------------------
+        # --- CONDUCT POINTS ANALYSIS ---
         if not conduct_df.empty:
             st.subheader("⚠️ Conduct Points Summary")
 
@@ -155,7 +146,6 @@ if uploaded_file is not None:
                 .rename(columns={"Points": "Conduct Points This Week"})
             )
 
-            # Merge with permanent staff initials
             staff_conduct = PERMANENT_STAFF.merge(staff_conduct, on="Teacher", how="left").fillna(0)
             staff_conduct = staff_conduct.sort_values("Conduct Points This Week", ascending=False)
 
@@ -177,29 +167,29 @@ if uploaded_file is not None:
 
             col5, col6 = st.columns(2)
             with col5:
-                safe_plot(staff_conduct.head(15), x="Teacher", y="Conduct Points This Week", text="Conduct Points This Week", title="Top 15 Staff (Conduct Points)")
+                safe_plot(staff_conduct.head(15), x="Teacher", y="Conduct Points This Week",
+                          text="Conduct Points This Week", title="Top 15 Staff (Conduct Points)")
             with col6:
-                safe_plot(dept_conduct, x="Dep", y="Conduct Points", text="Conduct Points", title="Conduct Points by Department")
+                safe_plot(dept_conduct, x="Dep", y="Conduct Points", text="Conduct Points",
+                          title="Conduct Points by Department")
 
             col7, col8 = st.columns(2)
             with col7:
-                safe_plot(house_conduct, x="House", y="Conduct Points", text="Conduct Points", title="Conduct Points by House")
+                safe_plot(house_conduct, x="House", y="Conduct Points", text="Conduct Points",
+                          title="Conduct Points by House")
             with col8:
-                safe_plot(cat_freq_conduct, x="Category", y="Frequency", text="Frequency", title="Conduct Categories Frequency")
+                safe_plot(cat_freq_conduct, x="Category", y="Frequency", text="Frequency",
+                          title="Conduct Categories Frequency")
 
-        # ---------------------------
-        # WEEKLY STAFF SUMMARY
-        # ---------------------------
+        # --- WEEKLY STAFF SUMMARY (SHOW ALL INITIALS) ---
         st.subheader("📅 Weekly Staff Summary (House Points)")
-        if 'staff_house' in locals() and not staff_house.empty:
-            staff_summary = staff_house.copy()
-            staff_summary["On Target (≥15)"] = np.where(
-                staff_summary["House Points This Week"] >= DEFAULT_WEEKLY_TARGET,
-                "✅ Yes", "⚠️ No"
-            )
-            st.dataframe(staff_summary)
-        else:
-            st.info("No house points data available to summarize.")
+        full_summary = PERMANENT_STAFF.merge(
+            staff_house[["Teacher","House Points This Week"]], on="Teacher", how="left"
+        ).fillna(0)
+        full_summary["On Target (≥15)"] = np.where(
+            full_summary["House Points This Week"] >= DEFAULT_WEEKLY_TARGET, "✅ Yes", "⚠️ No"
+        )
+        st.dataframe(full_summary.sort_values("House Points This Week", ascending=False))
 
     except Exception as e:
         st.error(f"Error loading CSV: {e}")
