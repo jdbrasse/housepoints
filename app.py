@@ -72,15 +72,16 @@ if uploaded_file is not None:
     try:
         df = load_and_clean(uploaded_file)
 
-        # --- Split into house vs conduct ---
+        # Split into house vs conduct
         house_df = df[df["Reward"].str.contains("house", case=False, na=False)]
         conduct_df = df[df["Reward"].str.contains("conduct", case=False, na=False)]
 
-        # --- HOUSE POINTS ANALYSIS ---
+        # -------------------------
+        # HOUSE POINTS ANALYSIS
+        # -------------------------
         if not house_df.empty:
             st.subheader("🏠 House Points Summary")
 
-            # Staff totals
             staff_house = (
                 house_df.groupby("Teacher")["Points"].sum().reset_index()
                 .rename(columns={"Points": "House Points This Week"})
@@ -88,29 +89,23 @@ if uploaded_file is not None:
             staff_house = PERMANENT_STAFF.merge(staff_house, on="Teacher", how="left").fillna(0)
             staff_house = staff_house.sort_values("House Points This Week", ascending=False)
 
-            # Department totals
             dept_house = (
                 house_df.groupby("Dep")["Points"].sum().reset_index()
                 .rename(columns={"Points": "House Points"})
             )
 
-            # Top students
             student_house = (
                 house_df.groupby(["Pupil Name","Form","Year"])["Points"]
                 .sum().reset_index().rename(columns={"Points":"House Points"})
             )
 
-            # House totals
             house_points = house_df.groupby("House")["Points"].sum().reset_index()
-
-            # Form totals (NEW)
             form_house = (
                 house_df.groupby(["Form","House"])["Points"].sum().reset_index()
                 .rename(columns={"Points":"House Points"})
                 .sort_values("House Points", ascending=False)
             )
 
-            # Category frequency
             cat_freq = (
                 house_df.groupby("Category")["Points"].count().reset_index()
                 .rename(columns={"Points":"Frequency"})
@@ -132,20 +127,31 @@ if uploaded_file is not None:
                           x="Pupil Name", y="House Points", text="House Points",
                           title="Top 15 Students (House Points)")
             with col4:
-                safe_plot(house_points, x="House", y="Points", text="Points",
-                          color="House", color_map=HOUSE_COLORS,
-                          title="House Points by House")
+                fig_house = px.bar(
+                    house_points, x="House", y="Points", text="Points",
+                    color="House", color_discrete_map=HOUSE_COLORS,
+                    title="House Points by House"
+                )
+                fig_house.update_layout(showlegend=False)
+                fig_house.update_traces(texttemplate="%{text}", textposition="outside")
+                st.plotly_chart(fig_house, use_container_width=True)
 
-            # NEW: House Points by Form
             st.subheader("🏫 House Points by Form")
-            safe_plot(form_house, x="Form", y="House Points", text="House Points",
-                      color="House", color_map=HOUSE_COLORS, title="House Points by Form")
+            fig_form_house = px.bar(
+                form_house, x="Form", y="House Points", text="House Points",
+                color="House", color_discrete_map=HOUSE_COLORS, title="House Points by Form"
+            )
+            fig_form_house.update_layout(showlegend=False)
+            fig_form_house.update_traces(texttemplate="%{text}", textposition="outside")
+            st.plotly_chart(fig_form_house, use_container_width=True)
 
             st.subheader("📘 House Points Category Frequency")
             safe_plot(cat_freq, x="Category", y="Frequency", text="Frequency",
                       title="House Point Categories Frequency")
 
-        # --- CONDUCT POINTS ANALYSIS ---
+        # -------------------------
+        # CONDUCT POINTS ANALYSIS
+        # -------------------------
         if not conduct_df.empty:
             st.subheader("⚠️ Conduct Points Summary")
 
@@ -166,7 +172,6 @@ if uploaded_file is not None:
                 .rename(columns={"Points": "Conduct Points"})
             )
 
-            # Form totals (NEW)
             form_conduct = (
                 conduct_df.groupby(["Form","House"])["Points"].count().reset_index()
                 .rename(columns={"Points":"Conduct Points"})
@@ -189,19 +194,30 @@ if uploaded_file is not None:
 
             col7, col8 = st.columns(2)
             with col7:
-                safe_plot(house_conduct, x="House", y="Conduct Points", text="Conduct Points",
-                          color="House", color_map=HOUSE_COLORS,
-                          title="Conduct Points by House")
+                fig_conduct_house = px.bar(
+                    house_conduct, x="House", y="Conduct Points", text="Conduct Points",
+                    color="House", color_discrete_map=HOUSE_COLORS,
+                    title="Conduct Points by House"
+                )
+                fig_conduct_house.update_layout(showlegend=False)
+                fig_conduct_house.update_traces(texttemplate="%{text}", textposition="outside")
+                st.plotly_chart(fig_conduct_house, use_container_width=True)
             with col8:
                 safe_plot(cat_freq_conduct, x="Category", y="Frequency", text="Frequency",
                           title="Conduct Categories Frequency")
 
-            # NEW: Conduct Points by Form
             st.subheader("🏫 Conduct Points by Form")
-            safe_plot(form_conduct, x="Form", y="Conduct Points", text="Conduct Points",
-                      color="House", color_map=HOUSE_COLORS, title="Conduct Points by Form")
+            fig_form_conduct = px.bar(
+                form_conduct, x="Form", y="Conduct Points", text="Conduct Points",
+                color="House", color_discrete_map=HOUSE_COLORS, title="Conduct Points by Form"
+            )
+            fig_form_conduct.update_layout(showlegend=False)
+            fig_form_conduct.update_traces(texttemplate="%{text}", textposition="outside")
+            st.plotly_chart(fig_form_conduct, use_container_width=True)
 
-        # --- WEEKLY STAFF SUMMARY ---
+        # -------------------------
+        # WEEKLY STAFF SUMMARY
+        # -------------------------
         st.subheader("📅 Weekly Staff Summary (House Points)")
         full_summary = PERMANENT_STAFF.merge(
             staff_house[["Teacher","House Points This Week"]], on="Teacher", how="left"
