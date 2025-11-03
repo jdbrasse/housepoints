@@ -18,12 +18,6 @@ HOUSE_NAMES = list(HOUSE_COLORS.keys())
 # --- SIDEBAR ---
 with st.sidebar:
     target_input = st.number_input("Weekly House Points Target", min_value=1, value=DEFAULT_WEEKLY_TARGET, step=1)
-    st.markdown("### 🎨 House Colours")
-    for house, color in HOUSE_COLORS.items():
-        st.markdown(
-            f"<div style='background-color:{color};padding:4px;border-radius:4px;color:white;text-align:center;'>{HOUSE_DOT[house]} {house}</div>",
-            unsafe_allow_html=True,
-        )
 
 # --- EMBEDDED STAFF LIST ---
 PERMANENT_STAFF = pd.DataFrame({
@@ -140,21 +134,18 @@ if uploaded_file is not None:
             if dept_filter != "All":
                 filtered_house_df = filtered_house_df[filtered_house_df["Dep"] == dept_filter]
 
-            if house_filter != "All":
-                st.markdown(
-                    f"<div style='background-color:{HOUSE_COLORS[house_filter]};color:white;padding:4px;border-radius:4px;width:fit-content;'>{HOUSE_DOT[house_filter]} {house_filter} Selected</div>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown("<div style='background-color:#555;color:white;padding:4px;border-radius:4px;width:fit-content;'>🏫 All Houses Selected</div>", unsafe_allow_html=True)
-
             house_cat = filtered_house_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
             house_cat["Category"] = title_case_category(house_cat["Category"])
             house_cat = house_cat.sort_values("Count", ascending=True)
 
-            fig_house_cat = px.bar(house_cat, x="Count", y="Category", orientation="h",
-                                   text="Count", title="House Categories by Frequency",
-                                   color_discrete_sequence=["#DAA520"])
+            fig_house_cat = px.bar(
+                house_cat,
+                x="Category",
+                y="Count",
+                text="Count",
+                title="House Categories by Frequency",
+                color_discrete_sequence=["#DAA520"]
+            )
             fig_house_cat.update_traces(textposition="outside")
             fig_house_cat.update_layout(showlegend=False, xaxis_title=None, yaxis_title=None)
             st.plotly_chart(fig_house_cat, use_container_width=True)
@@ -198,21 +189,18 @@ if uploaded_file is not None:
             if dept_filter_c != "All":
                 filtered_conduct_df = filtered_conduct_df[filtered_conduct_df["Dep"] == dept_filter_c]
 
-            if house_filter_c != "All":
-                st.markdown(
-                    f"<div style='background-color:{HOUSE_COLORS[house_filter_c]};color:white;padding:4px;border-radius:4px;width:fit-content;'>{HOUSE_DOT[house_filter_c]} {house_filter_c} Selected</div>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown("<div style='background-color:#555;color:white;padding:4px;border-radius:4px;width:fit-content;'>🏫 All Houses Selected</div>", unsafe_allow_html=True)
-
             conduct_cat = filtered_conduct_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
             conduct_cat["Category"] = title_case_category(conduct_cat["Category"])
             conduct_cat = conduct_cat.sort_values("Count", ascending=True)
 
-            fig_conduct_cat = px.bar(conduct_cat, x="Count", y="Category", orientation="h",
-                                     text="Count", title="Conduct Categories by Frequency",
-                                     color_discrete_sequence=["#800080"])
+            fig_conduct_cat = px.bar(
+                conduct_cat,
+                x="Category",
+                y="Count",
+                text="Count",
+                title="Conduct Categories by Frequency",
+                color_discrete_sequence=["#800080"]
+            )
             fig_conduct_cat.update_traces(textposition="outside")
             fig_conduct_cat.update_layout(showlegend=False, xaxis_title=None, yaxis_title=None)
             st.plotly_chart(fig_conduct_cat, use_container_width=True)
