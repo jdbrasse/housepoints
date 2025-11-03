@@ -121,21 +121,17 @@ if uploaded_file is not None:
         with col4:
             safe_plot(form_house, "Form", "House Points", "House Points by Form", "House Points", color="House", color_map=HOUSE_COLORS)
 
-        # --- 🏅 Reward Values Frequency (House Points)
+        # --- 🏅 House Reward Value Breakdown
         if not house_df.empty:
-            st.markdown("### 🏅 Reward Values Frequency (House Points)")
-            reward_freq = house_df.groupby("Reward")["Points"].count().reset_index().rename(columns={"Points":"Count"})
-            fig_reward = px.bar(
-                reward_freq.sort_values("Count"),
-                x="Count", y="Reward",
-                orientation="h",
-                text="Count",
-                title="Most Common House Rewards",
-                color_discrete_sequence=["#FF0000"]
+            st.markdown("### 🏅 House Reward Value Breakdown")
+            reward_breakdown = house_df.groupby("Reward")["Points"].count().reset_index().rename(columns={"Points": "Count"})
+            reward_breakdown = reward_breakdown.sort_values("Count", ascending=False)
+            st.dataframe(
+                reward_breakdown.style.set_table_styles([
+                    {"selector": "th", "props": [("background-color", "#FF0000"), ("color", "white"), ("font-weight", "bold")]}
+                ]),
+                use_container_width=True
             )
-            fig_reward.update_traces(textposition="outside")
-            fig_reward.update_layout(showlegend=False, yaxis_title=None, xaxis_title=None)
-            st.plotly_chart(fig_reward, use_container_width=True)
 
         # =========================
         # ⚠️ CONDUCT POINTS SUMMARY
@@ -161,24 +157,20 @@ if uploaded_file is not None:
 
         safe_plot(form_conduct, "Form", "Conduct Points", "Conduct Points by Form", "Conduct Points", color="House", color_map=HOUSE_COLORS)
 
-        # --- ⚠️ Conduct Values Frequency
+        # --- ⚠️ Conduct Reward Value Breakdown
         if not conduct_df.empty:
-            st.markdown("### ⚠️ Conduct Values Frequency (Conduct Points)")
-            conduct_freq = conduct_df.groupby("Reward")["Points"].count().reset_index().rename(columns={"Points":"Count"})
-            fig_conduct = px.bar(
-                conduct_freq.sort_values("Count"),
-                x="Count", y="Reward",
-                orientation="h",
-                text="Count",
-                title="Most Common Conduct Categories",
-                color_discrete_sequence=["#800080"]
+            st.markdown("### ⚠️ Conduct Reward Value Breakdown")
+            conduct_breakdown = conduct_df.groupby("Reward")["Points"].count().reset_index().rename(columns={"Points": "Count"})
+            conduct_breakdown = conduct_breakdown.sort_values("Count", ascending=False)
+            st.dataframe(
+                conduct_breakdown.style.set_table_styles([
+                    {"selector": "th", "props": [("background-color", "#800080"), ("color", "white"), ("font-weight", "bold")]}
+                ]),
+                use_container_width=True
             )
-            fig_conduct.update_traces(textposition="outside")
-            fig_conduct.update_layout(showlegend=False, yaxis_title=None, xaxis_title=None)
-            st.plotly_chart(fig_conduct, use_container_width=True)
 
         # =========================
-        # 🏆 LEADERBOARDS
+        # 🏆 LEADERBOARDS + STAFF
         # =========================
         st.markdown("---")
         st.subheader("🏆 Student Leaderboards")
@@ -225,9 +217,6 @@ if uploaded_file is not None:
                     styled = g_sorted[["Pupil Name","Form","House","Conduct Points"]].style.set_table_styles(header_style_for_house(house_mode)).hide(axis="index")
                     st.dataframe(styled, use_container_width=True)
 
-        # =========================
-        # 👩‍🏫 STAFF SUMMARY
-        # =========================
         st.markdown("---")
         st.subheader("📅 Weekly Staff Summary (House Points)")
         summary_df = PERMANENT_STAFF.merge(staff_house[["Teacher","House Points This Week"]], on="Teacher", how="left").fillna(0)
