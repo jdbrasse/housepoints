@@ -6,7 +6,7 @@ import plotly.express as px
 # --- CONFIG ---
 st.set_page_config(page_title="House & Conduct Points Analysis", layout="wide")
 st.title("🏫 House & Conduct Points Analysis Dashboard")
-st.write("Upload your weekly CSV file below to generate the full analysis.")
+st.write("Upload your Staff Initials file and weekly CSV to generate the full analysis.")
 
 # --- HOUSE & COLOUR SETTINGS ---
 DEFAULT_WEEKLY_TARGET = 15
@@ -22,24 +22,52 @@ with st.sidebar:
         value=DEFAULT_WEEKLY_TARGET,
         step=1
     )
+    st.markdown("### Upload files")
+    staff_list_file = st.file_uploader("Staff initials file (xlsx/csv, Column A; A1 is header)", type=["xlsx", "csv"])
+    weekly_csv = st.file_uploader("Weekly data CSV", type=["csv"])
 
-# --- EMBEDDED STAFF LIST (alphabetised from your uploaded Excel) ---
-PERMANENT_STAFF = pd.DataFrame({
-    "Teacher": sorted([
-        'ACA','AFO','AHU','AJL','AMA','AMD','APE','AZ','BJH','BW','CAH','CB','CD','CDE','CHO','CL','CLT','CSD','CST',
-        'CUG','DB','DBE','DBR','DE','DGU','DJM','DOL','DTA','DWI','EBO','EBO2','ECA','EFO','EMC','EMR','EPO','EPO2',
-        'ES','FA','FBA','GCO','GDO','GGR','GME','GSM','HBR','HCU','HEW','HME','HRO','HST','HWA','IMI','IMO','JBA',
-        'JBO','JDE','JFO','JHA','JHO','JMA','JMU','JPO','JRO','JSI','JSO','JWA','JWI','KFE','KGR','KMI','KST','LA',
-        'LGS','LHO','LHU','LJO','LLI','LMI','LPE','LST','LTA','LTH','MAW','MFI','MMI','MMO','MPO','MPU','MR','MRA',
-        'MRO','MSA','NHE','NIQ','NMI','NPE','NSM','POT','RBA','RFI','RGA','RLI','RPO','RRA','RWI','SBR','SCO','SMA',
-        'SMI','SSA','SSA2','SSP','SWO','SWA','TDU','TLE','TNE','TSM','VLO','VSB','VT','WRO'
-    ])
-})
+# --- HELPERS ---
+def read_staff_initials(file):
+    """
+    Reads staff initials from the first column.
+    Ignores the first row (assumed header A1).
+    Returns a sorted DataFrame with a single column 'Teacher'.
+    """
+    if file is None:
+        return None
 
-# --- FILE UPLOAD ---
-uploaded_file = st.file_uploader("Upload weekly CSV file", type=["csv"])
+    try:
+        if file.name.lower().endswith(".xlsx"):
+            df = pd.read_excel(file, header=None)
+        else:
+            df = pd.read_csv(file, header=None)
+    except Exception as e:
+        st.error(f"Error reading staff initials file: {e}")
+        return None
 
-# --- DATA CLEANING ---
+    if df.empty:
+        st.error("Staff initials file is empty.")
+        return None
+
+    # Take column A, drop header (row 0), strip/uppercase, drop empties/dupes
+    initials = (
+        df.iloc[1:, 0]  # ignore A1
+        .dropna()
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        .replace("", np.nan)
+        .dropna()
+        .unique()
+        .tolist()
+    )
+    initials_sorted = sorted(initials)
+    if not initials_sorted:
+        st.error("No staff initials found after parsing the file (Column A, ignoring A1).")
+        return None
+
+    return pd.DataFrame({"Teacher": initials_sorted})
+
 def load_and_clean(file):
     df = pd.read_csv(file)
     df.columns = df.columns.str.strip()
@@ -48,25 +76,30 @@ def load_and_clean(file):
         "Points","Date","Reward Description","Teacher","Dep","Subject"
     ]
     if len(df.columns) >= len(expected_columns):
-        df.columns = expected_columns
+        # Map to expected if they match in count (assumes ordering)
+        df.columns = expected_columns[:len(df.columns)]
+        # If fewer than expected, add missing columns
+        for col in expected_columns:
+            if col not in df.columns:
+                df[col] = ""
     else:
+        # Add any missing expected columns
         for col in expected_columns:
             if col not in df.columns:
                 df[col] = ""
 
-    df["Teacher"] = df["Teacher"].astype(str).str.strip().replace("", "Unknown")
-    df["Dep"] = df["Dep"].astype(str).str.strip()
-    df["Reward"] = df["Reward"].astype(str).str.strip().str.lower()
-    df["Category"] = df["Category"].astype(str).str.strip().str.lower()
-    df["Points"] = pd.to_numeric(df["Points"], errors="coerce").fillna(0).astype(int)
-    df["House"] = df["House"].astype(str).str.strip().str.upper().map(HOUSE_MAPPING)
-    df["Form"] = df["Form"].astype(str).str.strip().str.upper()
-    df["Year"] = df["Year"].astype(str).str.strip()
+    df["Teacher"]   = df["Teacher"].astype(str).str.strip().str.upper().replace("", "UNKNOWN")
+    df["Dep"]       = df["Dep"].astype(str).str.strip()
+    df["Reward"]    = df["Reward"].astype(str).str.strip().str.lower()
+    df["Category"]  = df["Category"].astype(str).str.strip().str.lower()
+    df["Points"]    = pd.to_numeric(df["Points"], errors="coerce").fillna(0).astype(int)
+    df["House"]     = df["House"].astype(str).str.strip().str.upper().map(HOUSE_MAPPING)
+    df["Form"]      = df["Form"].astype(str).str.strip().str.upper()
+    df["Year"]      = df["Year"].astype(str).str.strip()
     return df
 
-# --- STYLE HELPERS ---
 def safe_plot(data, x, y, title, text=None, orientation="v", color=None, color_map=None):
-    if data.empty:
+    if data is None or data.empty:
         st.info(f"No data available for {title}")
         return
     fig = px.bar(
@@ -86,45 +119,59 @@ def highlight_staff_target(row):
     color = "#ccffcc" if row["On Target (≥Target)"] == "✅ Yes" else "#ffcccc"
     return [f"background-color: {color}"] * len(row)
 
-# --- MAIN APP ---
-if uploaded_file is not None:
+# --- MAIN ---
+if staff_list_file is None:
+    st.warning("Please upload the **Staff initials** file first (xlsx/csv, Column A; A1 header).")
+elif weekly_csv is None:
+    st.info("Now upload the **weekly CSV** to begin analysis.")
+else:
     try:
-        df = load_and_clean(uploaded_file)
+        # Staff initials: ONLY these count and show
+        PERMANENT_STAFF = read_staff_initials(staff_list_file)
+        if PERMANENT_STAFF is None or PERMANENT_STAFF.empty:
+            st.stop()
+
+        # Weekly data
+        df = load_and_clean(weekly_csv)
+
+        # Keep only rows where Teacher is in staff initials; others set to NaN (won't count)
         df["Teacher"] = df["Teacher"].where(df["Teacher"].isin(PERMANENT_STAFF["Teacher"]), other=np.nan)
 
-        # Separate house and conduct data
-        house_df = df[df["Reward"].str.contains("house", case=False, na=False)].copy()
+        # Split into house vs conduct
+        house_df   = df[df["Reward"].str.contains("house",   case=False, na=False)].copy()
         conduct_df = df[df["Reward"].str.contains("conduct", case=False, na=False)].copy()
 
-        # --- HOUSE POINTS SECTION ---
+        # -------------------------
+        # HOUSE POINTS SECTION
+        # -------------------------
         st.subheader("🏠 House Points Summary")
-
         staff_house = (
             house_df.groupby("Teacher", dropna=True)["Points"].sum().reset_index()
             .rename(columns={"Points": "House Points This Week"})
-        ) if not house_df.empty else pd.DataFrame(columns=["Teacher", "House Points This Week"])
+        ) if not house_df.empty else pd.DataFrame(columns=["Teacher","House Points This Week"])
 
+        # Ensure everyone appears (0 if no points)
         staff_house = PERMANENT_STAFF.merge(staff_house, on="Teacher", how="left").fillna(0)
         staff_house["House Points This Week"] = staff_house["House Points This Week"].astype(int)
         staff_house = staff_house.sort_values("House Points This Week", ascending=False)
 
         dept_house = (
             house_df.groupby("Dep")["Points"].sum().reset_index().rename(columns={"Points": "House Points"})
-        ) if not house_df.empty else pd.DataFrame(columns=["Dep", "House Points"])
+        ) if not house_df.empty else pd.DataFrame(columns=["Dep","House Points"])
 
         student_house = (
-            house_df.groupby(["Pupil Name", "Form", "Year"])["Points"]
-            .sum().reset_index().rename(columns={"Points": "House Points"})
-        ) if not house_df.empty else pd.DataFrame(columns=["Pupil Name", "Form", "Year", "House Points"])
+            house_df.groupby(["Pupil Name","Form","Year"])["Points"]
+            .sum().reset_index().rename(columns={"Points":"House Points"})
+        ) if not house_df.empty else pd.DataFrame(columns=["Pupil Name","Form","Year","House Points"])
 
         house_points = (
             house_df.groupby("House")["Points"].sum().reset_index()
-        ) if not house_df.empty else pd.DataFrame(columns=["House", "Points"])
+        ) if not house_df.empty else pd.DataFrame(columns=["House","Points"])
 
         form_house = (
-            house_df.groupby(["Form", "House"])["Points"].sum().reset_index()
-            .rename(columns={"Points": "House Points"}).sort_values("House Points", ascending=False)
-        ) if not house_df.empty else pd.DataFrame(columns=["Form", "House", "House Points"])
+            house_df.groupby(["Form","House"])["Points"].sum().reset_index()
+            .rename(columns={"Points":"House Points"}).sort_values("House Points", ascending=False)
+        ) if not house_df.empty else pd.DataFrame(columns=["Form","House","House Points"])
 
         col1, col2 = st.columns(2)
         with col1:
@@ -158,12 +205,14 @@ if uploaded_file is not None:
         fig_form_house.update_traces(texttemplate="%{text}", textposition="outside")
         st.plotly_chart(fig_form_house, use_container_width=True)
 
-        # --- CONDUCT POINTS SECTION ---
+        # -------------------------
+        # CONDUCT POINTS SECTION
+        # -------------------------
         st.subheader("⚠️ Conduct Points Summary")
         staff_conduct = (
             conduct_df.groupby("Teacher", dropna=True)["Points"].count().reset_index()
             .rename(columns={"Points": "Conduct Points This Week"})
-        ) if not conduct_df.empty else pd.DataFrame(columns=["Teacher", "Conduct Points This Week"])
+        ) if not conduct_df.empty else pd.DataFrame(columns=["Teacher","Conduct Points This Week"])
 
         staff_conduct = PERMANENT_STAFF.merge(staff_conduct, on="Teacher", how="left").fillna(0)
         staff_conduct["Conduct Points This Week"] = staff_conduct["Conduct Points This Week"].astype(int)
@@ -171,16 +220,16 @@ if uploaded_file is not None:
 
         dept_conduct = (
             conduct_df.groupby("Dep")["Points"].count().reset_index().rename(columns={"Points": "Conduct Points"})
-        ) if not conduct_df.empty else pd.DataFrame(columns=["Dep", "Conduct Points"])
+        ) if not conduct_df.empty else pd.DataFrame(columns=["Dep","Conduct Points"])
 
         house_conduct = (
             conduct_df.groupby("House")["Points"].count().reset_index().rename(columns={"Points": "Conduct Points"})
-        ) if not conduct_df.empty else pd.DataFrame(columns=["House", "Conduct Points"])
+        ) if not conduct_df.empty else pd.DataFrame(columns=["House","Conduct Points"])
 
         form_conduct = (
-            conduct_df.groupby(["Form", "House"])["Points"].count().reset_index()
-            .rename(columns={"Points": "Conduct Points"}).sort_values("Conduct Points", ascending=False)
-        ) if not conduct_df.empty else pd.DataFrame(columns=["Form", "House", "Conduct Points"])
+            conduct_df.groupby(["Form","House"])["Points"].count().reset_index()
+            .rename(columns={"Points":"Conduct Points"}).sort_values("Conduct Points", ascending=False)
+        ) if not conduct_df.empty else pd.DataFrame(columns=["Form","House","Conduct Points"])
 
         st.subheader("🏫 Conduct Points by Form")
         fig_form_conduct = px.bar(
@@ -191,7 +240,9 @@ if uploaded_file is not None:
         fig_form_conduct.update_traces(texttemplate="%{text}", textposition="outside")
         st.plotly_chart(fig_form_conduct, use_container_width=True)
 
-        # --- LEADERBOARDS ---
+        # -------------------------
+        # LEADERBOARDS
+        # -------------------------
         st.markdown("---")
         st.subheader("🏆 Top Students — Leaderboards")
 
@@ -269,7 +320,14 @@ if uploaded_file is not None:
                 with st.expander(display_title):
                     st.dataframe(styled, use_container_width=True)
 
-        # --- STAFF SUMMARY ---
+        if lb_type == "House Points" and house_df.empty:
+            st.info("No house points available for leaderboards.")
+        if lb_type == "Conduct Points" and conduct_df.empty:
+            st.info("No conduct points available for leaderboards.")
+
+        # -------------------------
+        # STAFF SUMMARY (BOTTOM)
+        # -------------------------
         st.markdown("---")
         st.subheader("📅 Weekly Staff Summary (House Points)")
         summary_df = PERMANENT_STAFF.merge(
@@ -286,6 +344,3 @@ if uploaded_file is not None:
 
     except Exception as e:
         st.error(f"Error loading CSV: {e}")
-
-else:
-    st.info("Please upload your CSV file to begin analysis.")
