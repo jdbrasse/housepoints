@@ -8,25 +8,12 @@ import plotly.express as px
 # -----------------------------
 st.set_page_config(page_title="House & Conduct Points Analysis", layout="wide")
 st.title("🏫 House & Conduct Points Analysis Dashboard")
-st.write("Upload your weekly CSV file below to generate the full analysis.")
 
 # --- SETTINGS ---
 DEFAULT_WEEKLY_TARGET = 15
 HOUSE_MAPPING = {"B": "Brunel", "L": "Liddell", "D": "Dickens", "W": "Wilberforce"}
 HOUSE_COLORS = {"Brunel": "#FF0000", "Dickens": "#0000FF", "Liddell": "#FFD700", "Wilberforce": "#800080"}
 HOUSE_DOT = {"Brunel": "🔴", "Dickens": "🔵", "Liddell": "🟡", "Wilberforce": "🟣"}
-
-# -----------------------------
-# SIDEBAR SETTINGS
-# -----------------------------
-with st.sidebar:
-    target_input = st.number_input(
-        "Weekly House Points Target",
-        min_value=1,
-        value=DEFAULT_WEEKLY_TARGET,
-        step=1
-    )
-    weekly_csv = st.file_uploader("Upload Weekly CSV", type=["csv"])
 
 # -----------------------------
 # EMBEDDED STAFF LIST (Alphabetised)
@@ -42,6 +29,20 @@ PERMANENT_STAFF = pd.DataFrame({
         'SMI','SSA','SSA2','SSP','SWO','SWA','TDU','TLE','TNE','TSM','VLO','VSB','VT','WRO'
     ])
 })
+
+# -----------------------------
+# FILE UPLOAD SECTION
+# -----------------------------
+st.markdown("## 📂 Upload Weekly CSV File")
+st.markdown("💡 *Please upload your weekly house points CSV file (e.g., `housepoints_week_45.csv`).*")
+uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
+
+# -----------------------------
+# SIDEBAR SETTINGS
+# -----------------------------
+with st.sidebar:
+    st.header("⚙️ Settings")
+    target_input = st.number_input("Weekly House Points Target", min_value=1, value=DEFAULT_WEEKLY_TARGET, step=1)
 
 # -----------------------------
 # HELPER FUNCTIONS
@@ -91,9 +92,9 @@ def highlight_staff_target(row):
 # -----------------------------
 # MAIN APP
 # -----------------------------
-if weekly_csv is not None:
+if uploaded_file is not None:
     try:
-        df = load_and_clean(weekly_csv)
+        df = load_and_clean(uploaded_file)
         df["Teacher"] = df["Teacher"].where(df["Teacher"].isin(PERMANENT_STAFF["Teacher"]), other=np.nan)
 
         house_df = df[df["Reward"].str.contains("house", case=False, na=False)].copy()
@@ -195,86 +196,6 @@ if weekly_csv is not None:
         st.plotly_chart(fig_form_conduct, use_container_width=True)
 
         # -------------------------
-        # LEADERBOARDS
-        # -------------------------
-        st.markdown("---")
-        st.subheader("🏆 Top Students — Leaderboards")
-
-        lb_type = st.selectbox("Select leaderboard type:", ["House Points", "Conduct Points"])
-
-        if lb_type == "House Points" and not house_df.empty:
-            studs = (
-                house_df.groupby(["Pupil Name", "Form", "House"], as_index=False)["Points"].sum()
-                .rename(columns={"Points": "House Points"})
-            )
-
-            st.markdown("### 🥇 Top 15 Students — Overall (House Points)")
-            top15_hp = studs.sort_values("House Points", ascending=False).head(15)
-            st.dataframe(top15_hp[["Pupil Name", "Form", "House", "House Points"]], use_container_width=True)
-
-            st.markdown("### 🏠 Top 10 Students per House (House Points)")
-            for house in ["Brunel", "Dickens", "Liddell", "Wilberforce"]:
-                hdf = studs[studs["House"] == house].sort_values("House Points", ascending=False).head(10)
-                if hdf.empty:
-                    continue
-                styled = (
-                    hdf[["Pupil Name", "Form", "House", "House Points"]]
-                    .style.set_table_styles(header_style_for_house(house))
-                    .hide(axis="index")
-                )
-                with st.expander(f"{HOUSE_DOT[house]} {house} — Top 10"):
-                    st.dataframe(styled, use_container_width=True)
-
-            st.markdown("### 🏫 Top 10 Students per Form (House Points)")
-            for form_name, g in studs.groupby("Form"):
-                g_sorted = g.sort_values("House Points", ascending=False).head(10)
-                house_mode = g["House"].mode().iloc[0] if not g["House"].mode().empty else None
-                display_title = f"{HOUSE_DOT.get(house_mode, '')} Form {form_name} — Top 10"
-                styled = (
-                    g_sorted[["Pupil Name", "Form", "House", "House Points"]]
-                    .style.set_table_styles(header_style_for_house(house_mode or ''))
-                    .hide(axis="index")
-                )
-                with st.expander(display_title):
-                    st.dataframe(styled, use_container_width=True)
-
-        elif lb_type == "Conduct Points" and not conduct_df.empty:
-            studs_c = (
-                conduct_df.groupby(["Pupil Name", "Form", "House"], as_index=False)["Points"].count()
-                .rename(columns={"Points": "Conduct Points"})
-            )
-
-            st.markdown("### 🥇 Top 15 Students — Overall (Conduct Points)")
-            top15_cp = studs_c.sort_values("Conduct Points", ascending=False).head(15)
-            st.dataframe(top15_cp[["Pupil Name", "Form", "House", "Conduct Points"]], use_container_width=True)
-
-            st.markdown("### 🏠 Top 10 Students per House (Conduct Points)")
-            for house in ["Brunel", "Dickens", "Liddell", "Wilberforce"]:
-                hdf = studs_c[studs_c["House"] == house].sort_values("Conduct Points", ascending=False).head(10)
-                if hdf.empty:
-                    continue
-                styled = (
-                    hdf[["Pupil Name", "Form", "House", "Conduct Points"]]
-                    .style.set_table_styles(header_style_for_house(house))
-                    .hide(axis="index")
-                )
-                with st.expander(f"{HOUSE_DOT[house]} {house} — Top 10"):
-                    st.dataframe(styled, use_container_width=True)
-
-            st.markdown("### 🏫 Top 10 Students per Form (Conduct Points)")
-            for form_name, g in studs_c.groupby("Form"):
-                g_sorted = g.sort_values("Conduct Points", ascending=False).head(10)
-                house_mode = g["House"].mode().iloc[0] if not g["House"].mode().empty else None
-                display_title = f"{HOUSE_DOT.get(house_mode, '')} Form {form_name} — Top 10"
-                styled = (
-                    g_sorted[["Pupil Name", "Form", "House", "Conduct Points"]]
-                    .style.set_table_styles(header_style_for_house(house_mode or ''))
-                    .hide(axis="index")
-                )
-                with st.expander(display_title):
-                    st.dataframe(styled, use_container_width=True)
-
-        # -------------------------
         # STAFF SUMMARY (BOTTOM)
         # -------------------------
         st.markdown("---")
@@ -287,11 +208,12 @@ if weekly_csv is not None:
             summary_df["House Points This Week"] >= int(target_input), "✅ Yes", "⚠️ No"
         )
         styled_staff = summary_df.sort_values("House Points This Week", ascending=False).style.apply(
-            highlight_staff_target, axis=1
+            lambda row: ["background-color: #ccffcc" if row["On Target (≥Target)"] == "✅ Yes" else "background-color: #ffcccc"] * len(row),
+            axis=1
         )
         st.dataframe(styled_staff, use_container_width=True)
 
     except Exception as e:
         st.error(f"Error loading CSV: {e}")
 else:
-    st.info("Please upload your weekly CSV file to begin analysis.")
+    st.info("📤 Please upload your weekly CSV file to begin analysis.")
