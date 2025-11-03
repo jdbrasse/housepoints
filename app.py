@@ -12,6 +12,7 @@ st.write("Upload your weekly CSV file below to generate the full analysis.")
 DEFAULT_WEEKLY_TARGET = 15
 HOUSE_MAPPING = {"B": "Brunel", "L": "Liddell", "D": "Dickens", "W": "Wilberforce"}
 HOUSE_COLORS = {"Brunel": "#FF0000", "Dickens": "#0000FF", "Liddell": "#FFD700", "Wilberforce": "#800080"}
+HOUSE_DOT = {"Brunel": "🔴", "Dickens": "🔵", "Liddell": "🟡", "Wilberforce": "🟣"}
 HOUSE_NAMES = list(HOUSE_COLORS.keys())
 
 # --- SIDEBAR ---
@@ -63,10 +64,12 @@ def safe_plot(data, x, y, title, text=None, orientation="v", color=None, color_m
     if data.empty:
         st.info(f"No data available for {title}")
         return
-    fig = px.bar(data, x=x, y=y, text=text, orientation=orientation, title=title,
-                 color=color, color_discrete_map=color_map)
+    fig = px.bar(
+        data, x=x, y=y, text=text, orientation=orientation,
+        title=title, color=color, color_discrete_map=color_map
+    )
     fig.update_traces(texttemplate="%{text}", textposition="outside")
-    fig.update_layout(title=dict(font=dict(size=20)), xaxis_title=None, yaxis_title=None)
+    fig.update_layout(showlegend=False, title=dict(font=dict(size=20)), xaxis_title=None, yaxis_title=None)
     st.plotly_chart(fig, use_container_width=True)
 
 def header_style_for_house(house_name: str):
@@ -139,9 +142,7 @@ if uploaded_file is not None:
 
             fig_house_cat = px.bar(
                 house_cat,
-                x="Category",
-                y="Count",
-                text="Count",
+                x="Category", y="Count", text="Count",
                 title="House Categories by Frequency (Descending)",
                 color_discrete_sequence=["#DAA520"]
             )
@@ -194,9 +195,7 @@ if uploaded_file is not None:
 
             fig_conduct_cat = px.bar(
                 conduct_cat,
-                x="Category",
-                y="Count",
-                text="Count",
+                x="Category", y="Count", text="Count",
                 title="Conduct Categories by Frequency (Descending)",
                 color_discrete_sequence=["#800080"]
             )
@@ -220,7 +219,7 @@ if uploaded_file is not None:
             for house in HOUSE_NAMES:
                 hdf = studs[studs["House"] == house].sort_values("House Points", ascending=False).head(15)
                 if not hdf.empty:
-                    with st.expander(f"{house} — Top 15"):
+                    with st.expander(f"{HOUSE_DOT[house]} {house} — Top 15"):
                         styled = hdf[["Pupil Name","Form","House","House Points"]].style.set_table_styles(header_style_for_house(house)).hide(axis="index")
                         st.dataframe(styled, use_container_width=True)
 
@@ -228,7 +227,7 @@ if uploaded_file is not None:
             for form, g in studs.groupby("Form"):
                 g_sorted = g.sort_values("House Points", ascending=False).head(10)
                 house_mode = g["House"].mode().iloc[0] if not g["House"].mode().empty else ""
-                with st.expander(f"Form {form} — Top 10"):
+                with st.expander(f"{HOUSE_DOT.get(house_mode,'')} Form {form} — Top 10"):
                     styled = g_sorted[["Pupil Name","Form","House","House Points"]].style.set_table_styles(header_style_for_house(house_mode)).hide(axis="index")
                     st.dataframe(styled, use_container_width=True)
 
@@ -241,7 +240,7 @@ if uploaded_file is not None:
             for house in HOUSE_NAMES:
                 hdf = studs_c[studs_c["House"] == house].sort_values("Conduct Points", ascending=False).head(15)
                 if not hdf.empty:
-                    with st.expander(f"{house} — Top 15"):
+                    with st.expander(f"{HOUSE_DOT[house]} {house} — Top 15"):
                         styled = hdf[["Pupil Name","Form","House","Conduct Points"]].style.set_table_styles(header_style_for_house(house)).hide(axis="index")
                         st.dataframe(styled, use_container_width=True)
 
@@ -249,7 +248,7 @@ if uploaded_file is not None:
             for form, g in studs_c.groupby("Form"):
                 g_sorted = g.sort_values("Conduct Points", ascending=False).head(10)
                 house_mode = g["House"].mode().iloc[0] if not g["House"].mode().empty else ""
-                with st.expander(f"Form {form} — Top 10"):
+                with st.expander(f"{HOUSE_DOT.get(house_mode,'')} Form {form} — Top 10"):
                     styled = g_sorted[["Pupil Name","Form","House","Conduct Points"]].style.set_table_styles(header_style_for_house(house_mode)).hide(axis="index")
                     st.dataframe(styled, use_container_width=True)
 
