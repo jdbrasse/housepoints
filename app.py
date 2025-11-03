@@ -121,17 +121,29 @@ if uploaded_file is not None:
         with col4:
             safe_plot(form_house, "Form", "House Points", "House Points by Form", "House Points", color="House", color_map=HOUSE_COLORS)
 
-        # --- 🏅 House Reward Value Breakdown
+        # --- 🏅 HOUSE CATEGORY FREQUENCY (FILTERABLE)
         if not house_df.empty:
-            st.markdown("### 🏅 House Reward Value Breakdown")
-            reward_breakdown = house_df.groupby("Reward")["Points"].count().reset_index().rename(columns={"Points": "Count"})
-            reward_breakdown = reward_breakdown.sort_values("Count", ascending=False)
-            st.dataframe(
-                reward_breakdown.style.set_table_styles([
-                    {"selector": "th", "props": [("background-color", "#FF0000"), ("color", "white"), ("font-weight", "bold")]}
-                ]),
-                use_container_width=True
+            st.markdown("### 🏅 House Point Category Frequency")
+
+            form_filter = st.selectbox("Filter by Form:", options=["All"] + sorted(house_df["Form"].dropna().unique().tolist()))
+            dept_filter = st.selectbox("Filter by Department:", options=["All"] + sorted(house_df["Dep"].dropna().unique().tolist()))
+
+            filtered_house_df = house_df.copy()
+            if form_filter != "All":
+                filtered_house_df = filtered_house_df[filtered_house_df["Form"] == form_filter]
+            if dept_filter != "All":
+                filtered_house_df = filtered_house_df[filtered_house_df["Dep"] == dept_filter]
+
+            house_cat = filtered_house_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
+            house_cat = house_cat.sort_values("Count", ascending=True)
+            fig_house_cat = px.bar(
+                house_cat, x="Count", y="Category", orientation="h",
+                text="Count", title="All House Categories by Frequency (Filtered)",
+                color_discrete_sequence=["#DAA520"]
             )
+            fig_house_cat.update_traces(textposition="outside")
+            fig_house_cat.update_layout(showlegend=False, xaxis_title=None, yaxis_title=None)
+            st.plotly_chart(fig_house_cat, use_container_width=True)
 
         # =========================
         # ⚠️ CONDUCT POINTS SUMMARY
@@ -157,20 +169,32 @@ if uploaded_file is not None:
 
         safe_plot(form_conduct, "Form", "Conduct Points", "Conduct Points by Form", "Conduct Points", color="House", color_map=HOUSE_COLORS)
 
-        # --- ⚠️ Conduct Reward Value Breakdown
+        # --- ⚠️ CONDUCT CATEGORY FREQUENCY (FILTERABLE)
         if not conduct_df.empty:
-            st.markdown("### ⚠️ Conduct Reward Value Breakdown")
-            conduct_breakdown = conduct_df.groupby("Reward")["Points"].count().reset_index().rename(columns={"Points": "Count"})
-            conduct_breakdown = conduct_breakdown.sort_values("Count", ascending=False)
-            st.dataframe(
-                conduct_breakdown.style.set_table_styles([
-                    {"selector": "th", "props": [("background-color", "#800080"), ("color", "white"), ("font-weight", "bold")]}
-                ]),
-                use_container_width=True
+            st.markdown("### ⚠️ Conduct Point Category Frequency")
+
+            form_filter_c = st.selectbox("Filter by Form (Conduct):", options=["All"] + sorted(conduct_df["Form"].dropna().unique().tolist()))
+            dept_filter_c = st.selectbox("Filter by Department (Conduct):", options=["All"] + sorted(conduct_df["Dep"].dropna().unique().tolist()))
+
+            filtered_conduct_df = conduct_df.copy()
+            if form_filter_c != "All":
+                filtered_conduct_df = filtered_conduct_df[filtered_conduct_df["Form"] == form_filter_c]
+            if dept_filter_c != "All":
+                filtered_conduct_df = filtered_conduct_df[filtered_conduct_df["Dep"] == dept_filter_c]
+
+            conduct_cat = filtered_conduct_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
+            conduct_cat = conduct_cat.sort_values("Count", ascending=True)
+            fig_conduct_cat = px.bar(
+                conduct_cat, x="Count", y="Category", orientation="h",
+                text="Count", title="All Conduct Categories by Frequency (Filtered)",
+                color_discrete_sequence=["#800080"]
             )
+            fig_conduct_cat.update_traces(textposition="outside")
+            fig_conduct_cat.update_layout(showlegend=False, xaxis_title=None, yaxis_title=None)
+            st.plotly_chart(fig_conduct_cat, use_container_width=True)
 
         # =========================
-        # 🏆 LEADERBOARDS + STAFF
+        # 🏆 LEADERBOARDS
         # =========================
         st.markdown("---")
         st.subheader("🏆 Student Leaderboards")
@@ -217,6 +241,9 @@ if uploaded_file is not None:
                     styled = g_sorted[["Pupil Name","Form","House","Conduct Points"]].style.set_table_styles(header_style_for_house(house_mode)).hide(axis="index")
                     st.dataframe(styled, use_container_width=True)
 
+        # =========================
+        # 👩‍🏫 STAFF SUMMARY
+        # =========================
         st.markdown("---")
         st.subheader("📅 Weekly Staff Summary (House Points)")
         summary_df = PERMANENT_STAFF.merge(staff_house[["Teacher","House Points This Week"]], on="Teacher", how="left").fillna(0)
