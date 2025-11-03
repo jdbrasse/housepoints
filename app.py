@@ -136,14 +136,14 @@ if uploaded_file is not None:
 
             house_cat = filtered_house_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
             house_cat["Category"] = title_case_category(house_cat["Category"])
-            house_cat = house_cat.sort_values("Count", ascending=True)
+            house_cat = house_cat.sort_values("Count", ascending=True)  # ensure ascending
 
             fig_house_cat = px.bar(
                 house_cat,
                 x="Category",
                 y="Count",
                 text="Count",
-                title="House Categories by Frequency",
+                title="House Categories by Frequency (Ascending)",
                 color_discrete_sequence=["#DAA520"]
             )
             fig_house_cat.update_traces(textposition="outside")
@@ -191,14 +191,14 @@ if uploaded_file is not None:
 
             conduct_cat = filtered_conduct_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
             conduct_cat["Category"] = title_case_category(conduct_cat["Category"])
-            conduct_cat = conduct_cat.sort_values("Count", ascending=True)
+            conduct_cat = conduct_cat.sort_values("Count", ascending=True)  # ensure ascending
 
             fig_conduct_cat = px.bar(
                 conduct_cat,
                 x="Category",
                 y="Count",
                 text="Count",
-                title="Conduct Categories by Frequency",
+                title="Conduct Categories by Frequency (Ascending)",
                 color_discrete_sequence=["#800080"]
             )
             fig_conduct_cat.update_traces(textposition="outside")
