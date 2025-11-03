@@ -25,7 +25,7 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
 
-# --- EMBEDDED STAFF LIST (alphabetised) ---
+# --- EMBEDDED STAFF LIST ---
 PERMANENT_STAFF = pd.DataFrame({
     "Teacher": sorted([
         'ACA','AFO','AHU','AJL','AMA','AMD','APE','AZ','BJH','BW','CAH','CB','CD','CDE','CHO','CL','CLT','CSD','CST',
@@ -125,7 +125,7 @@ if uploaded_file is not None:
         with col4:
             safe_plot(form_house, "Form", "House Points", "House Points by Form", "House Points", color="House", color_map=HOUSE_COLORS)
 
-        # --- 🏠 Category Frequency with Filters
+        # --- 🏠 Category Frequency ---
         if not house_df.empty:
             st.markdown("### 🏅 House Point Category Frequency")
 
@@ -148,17 +148,13 @@ if uploaded_file is not None:
             else:
                 st.markdown("<div style='background-color:#555;color:white;padding:4px;border-radius:4px;width:fit-content;'>🏫 All Houses Selected</div>", unsafe_allow_html=True)
 
-            house_cat = (
-                filtered_house_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
-            )
+            house_cat = filtered_house_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
             house_cat["Category"] = title_case_category(house_cat["Category"])
             house_cat = house_cat.sort_values("Count", ascending=True)
 
-            fig_house_cat = px.bar(
-                house_cat, x="Count", y="Category", orientation="h",
-                text="Count", title="All House Categories by Frequency (Filtered)",
-                color_discrete_sequence=["#DAA520"]
-            )
+            fig_house_cat = px.bar(house_cat, x="Count", y="Category", orientation="h",
+                                   text="Count", title="House Categories by Frequency",
+                                   color_discrete_sequence=["#DAA520"])
             fig_house_cat.update_traces(textposition="outside")
             fig_house_cat.update_layout(showlegend=False, xaxis_title=None, yaxis_title=None)
             st.plotly_chart(fig_house_cat, use_container_width=True)
@@ -187,7 +183,7 @@ if uploaded_file is not None:
 
         safe_plot(form_conduct, "Form", "Conduct Points", "Conduct Points by Form", "Conduct Points", color="House", color_map=HOUSE_COLORS)
 
-        # --- ⚠️ Category Frequency with Filters
+        # --- ⚠️ Category Frequency ---
         if not conduct_df.empty:
             st.markdown("### ⚠️ Conduct Point Category Frequency")
 
@@ -210,20 +206,65 @@ if uploaded_file is not None:
             else:
                 st.markdown("<div style='background-color:#555;color:white;padding:4px;border-radius:4px;width:fit-content;'>🏫 All Houses Selected</div>", unsafe_allow_html=True)
 
-            conduct_cat = (
-                filtered_conduct_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
-            )
+            conduct_cat = filtered_conduct_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
             conduct_cat["Category"] = title_case_category(conduct_cat["Category"])
             conduct_cat = conduct_cat.sort_values("Count", ascending=True)
 
-            fig_conduct_cat = px.bar(
-                conduct_cat, x="Count", y="Category", orientation="h",
-                text="Count", title="All Conduct Categories by Frequency (Filtered)",
-                color_discrete_sequence=["#800080"]
-            )
+            fig_conduct_cat = px.bar(conduct_cat, x="Count", y="Category", orientation="h",
+                                     text="Count", title="Conduct Categories by Frequency",
+                                     color_discrete_sequence=["#800080"])
             fig_conduct_cat.update_traces(textposition="outside")
             fig_conduct_cat.update_layout(showlegend=False, xaxis_title=None, yaxis_title=None)
             st.plotly_chart(fig_conduct_cat, use_container_width=True)
+
+        # =========================
+        # 🏆 LEADERBOARDS
+        # =========================
+        st.markdown("---")
+        st.subheader("🏆 Student Leaderboards")
+        lb_type = st.selectbox("Select leaderboard type:", ["House Points", "Conduct Points"])
+
+        if lb_type == "House Points":
+            studs = house_df.groupby(["Pupil Name","Form","House"], as_index=False)["Points"].sum().rename(columns={"Points":"House Points"})
+            st.markdown("### 🥇 Top 15 Students — Overall (House Points)")
+            st.dataframe(studs.sort_values("House Points", ascending=False).head(15), use_container_width=True)
+
+            st.markdown("### 🏠 Top 15 Students per House (House Points)")
+            for house in HOUSE_NAMES:
+                hdf = studs[studs["House"] == house].sort_values("House Points", ascending=False).head(15)
+                if not hdf.empty:
+                    with st.expander(f"{HOUSE_DOT[house]} {house} — Top 15"):
+                        styled = hdf[["Pupil Name","Form","House","House Points"]].style.set_table_styles(header_style_for_house(house)).hide(axis="index")
+                        st.dataframe(styled, use_container_width=True)
+
+            st.markdown("### 🏫 Top 10 Students per Form (House Points)")
+            for form, g in studs.groupby("Form"):
+                g_sorted = g.sort_values("House Points", ascending=False).head(10)
+                house_mode = g["House"].mode().iloc[0] if not g["House"].mode().empty else ""
+                with st.expander(f"{HOUSE_DOT.get(house_mode,'')} Form {form} — Top 10"):
+                    styled = g_sorted[["Pupil Name","Form","House","House Points"]].style.set_table_styles(header_style_for_house(house_mode)).hide(axis="index")
+                    st.dataframe(styled, use_container_width=True)
+
+        else:
+            studs_c = conduct_df.groupby(["Pupil Name","Form","House"], as_index=False)["Points"].count().rename(columns={"Points":"Conduct Points"})
+            st.markdown("### 🥇 Top 15 Students — Overall (Conduct Points)")
+            st.dataframe(studs_c.sort_values("Conduct Points", ascending=False).head(15), use_container_width=True)
+
+            st.markdown("### 🏠 Top 15 Students per House (Conduct Points)")
+            for house in HOUSE_NAMES:
+                hdf = studs_c[studs_c["House"] == house].sort_values("Conduct Points", ascending=False).head(15)
+                if not hdf.empty:
+                    with st.expander(f"{HOUSE_DOT[house]} {house} — Top 15"):
+                        styled = hdf[["Pupil Name","Form","House","Conduct Points"]].style.set_table_styles(header_style_for_house(house)).hide(axis="index")
+                        st.dataframe(styled, use_container_width=True)
+
+            st.markdown("### 🏫 Top 10 Students per Form (Conduct Points)")
+            for form, g in studs_c.groupby("Form"):
+                g_sorted = g.sort_values("Conduct Points", ascending=False).head(10)
+                house_mode = g["House"].mode().iloc[0] if not g["House"].mode().empty else ""
+                with st.expander(f"{HOUSE_DOT.get(house_mode,'')} Form {form} — Top 10"):
+                    styled = g_sorted[["Pupil Name","Form","House","Conduct Points"]].style.set_table_styles(header_style_for_house(house_mode)).hide(axis="index")
+                    st.dataframe(styled, use_container_width=True)
 
         # =========================
         # 👩‍🏫 STAFF SUMMARY
