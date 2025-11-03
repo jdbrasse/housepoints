@@ -17,6 +17,9 @@ HOUSE_DOT = {"Brunel": "🔴", "Dickens": "🔵", "Liddell": "🟡", "Wilberforc
 # --- SIDEBAR ---
 with st.sidebar:
     target_input = st.number_input("Weekly House Points Target", min_value=1, value=DEFAULT_WEEKLY_TARGET, step=1)
+    st.markdown("### 🎨 House Colours")
+    for house, color in HOUSE_COLORS.items():
+        st.markdown(f"<div style='background-color:{color};padding:4px;border-radius:4px;color:white;text-align:center;'>{HOUSE_DOT[house]} {house}</div>", unsafe_allow_html=True)
 
 # --- EMBEDDED STAFF LIST (from your Excel) ---
 PERMANENT_STAFF = pd.DataFrame({
@@ -86,7 +89,6 @@ if uploaded_file is not None:
         df = load_and_clean(uploaded_file)
         df["Teacher"] = df["Teacher"].where(df["Teacher"].isin(PERMANENT_STAFF["Teacher"]), other=np.nan)
 
-        # Split data
         house_df = df[df["Reward"].str.contains("house", case=False, na=False)].copy()
         conduct_df = df[df["Reward"].str.contains("conduct", case=False, na=False)].copy()
 
@@ -112,37 +114,42 @@ if uploaded_file is not None:
         with col2:
             safe_plot(student_house.sort_values("House Points", ascending=False).head(15),
                       x="Pupil Name", y="House Points", text="House Points",
-                      title="Top 15 Students (House Points)")
+                      color="House", color_map=HOUSE_COLORS, title="Top 15 Students (House Points)")
 
         col3, col4 = st.columns(2)
         with col3:
-            fig_house = px.bar(
-                house_points, x="House", y="Points", text="Points",
-                color="House", color_discrete_map=HOUSE_COLORS,
-                title="House Points by House"
-            )
+            fig_house = px.bar(house_points, x="House", y="Points", text="Points",
+                               color="House", color_discrete_map=HOUSE_COLORS,
+                               title="House Points by House")
             fig_house.update_layout(showlegend=False)
             fig_house.update_traces(texttemplate="%{text}", textposition="outside")
             st.plotly_chart(fig_house, use_container_width=True)
         with col4:
-            fig_form_house = px.bar(
-                form_house, x="Form", y="House Points", text="House Points",
-                color="House", color_discrete_map=HOUSE_COLORS, title="House Points by Form"
-            )
+            fig_form_house = px.bar(form_house, x="Form", y="House Points", text="House Points",
+                                    color="House", color_discrete_map=HOUSE_COLORS,
+                                    title="House Points by Form")
             fig_form_house.update_layout(showlegend=False)
             fig_form_house.update_traces(texttemplate="%{text}", textposition="outside")
             st.plotly_chart(fig_form_house, use_container_width=True)
 
-        # --- CONDUCT POINTS SECTION ---
+        # --- CONDUCT POINTS SUMMARY ---
         st.subheader("⚠️ Conduct Points Summary")
+
         form_conduct = conduct_df.groupby(["Form", "House"])["Points"].count().reset_index().rename(columns={"Points": "Conduct Points"})
-        fig_form_conduct = px.bar(
-            form_conduct, x="Form", y="Conduct Points", text="Conduct Points",
-            color="House", color_discrete_map=HOUSE_COLORS, title="Conduct Points by Form"
-        )
-        fig_form_conduct.update_layout(showlegend=False)
-        fig_form_conduct.update_traces(texttemplate="%{text}", textposition="outside")
-        st.plotly_chart(fig_form_conduct, use_container_width=True)
+        studs_c = conduct_df.groupby(["Pupil Name", "Form", "House"], as_index=False)["Points"].count().rename(columns={"Points": "Conduct Points"})
+
+        col5, col6 = st.columns(2)
+        with col5:
+            safe_plot(studs_c.sort_values("Conduct Points", ascending=False).head(15),
+                      x="Pupil Name", y="Conduct Points", text="Conduct Points",
+                      color="House", color_map=HOUSE_COLORS, title="Top 15 Students (Conduct Points)")
+        with col6:
+            fig_form_conduct = px.bar(form_conduct, x="Form", y="Conduct Points", text="Conduct Points",
+                                      color="House", color_discrete_map=HOUSE_COLORS,
+                                      title="Conduct Points by Form")
+            fig_form_conduct.update_layout(showlegend=False)
+            fig_form_conduct.update_traces(texttemplate="%{text}", textposition="outside")
+            st.plotly_chart(fig_form_conduct, use_container_width=True)
 
         # --- 🏆 LEADERBOARDS ---
         st.markdown("---")
@@ -172,7 +179,6 @@ if uploaded_file is not None:
                     st.dataframe(styled, use_container_width=True)
 
         else:
-            studs_c = conduct_df.groupby(["Pupil Name", "Form", "House"], as_index=False)["Points"].count().rename(columns={"Points": "Conduct Points"})
             st.markdown("### 🥇 Top 15 Students — Overall (Conduct Points)")
             st.dataframe(studs_c.sort_values("Conduct Points", ascending=False).head(15), use_container_width=True)
 
