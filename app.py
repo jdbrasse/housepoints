@@ -13,6 +13,7 @@ DEFAULT_WEEKLY_TARGET = 15
 HOUSE_MAPPING = {"B": "Brunel", "L": "Liddell", "D": "Dickens", "W": "Wilberforce"}
 HOUSE_COLORS = {"Brunel": "#FF0000", "Dickens": "#0000FF", "Liddell": "#FFD700", "Wilberforce": "#800080"}
 HOUSE_DOT = {"Brunel": "🔴", "Dickens": "🔵", "Liddell": "🟡", "Wilberforce": "🟣"}
+HOUSE_NAMES = list(HOUSE_COLORS.keys())
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -24,7 +25,7 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
 
-# --- EMBEDDED STAFF LIST ---
+# --- EMBEDDED STAFF LIST (alphabetised) ---
 PERMANENT_STAFF = pd.DataFrame({
     "Teacher": sorted([
         'ACA','AFO','AHU','AJL','AMA','AMD','APE','AZ','BJH','BW','CAH','CB','CD','CDE','CHO','CL','CLT','CSD','CST',
@@ -84,22 +85,16 @@ def highlight_staff_target(row):
     color = "#ccffcc" if row["On Target (≥Target)"] == "✅ Yes" else "#ffcccc"
     return [f"background-color: {color}"] * len(row)
 
-def house_dropdown(label):
-    """Colour-coded single-select house dropdown"""
-    house_options = ["All"] + list(HOUSE_COLORS.keys())
-    color_html = "".join(
-        f"<option style='background-color:{HOUSE_COLORS[h]};color:white;' value='{h}'>{h}</option>" for h in HOUSE_COLORS
-    )
-    st.markdown(f"<style>select {{ color: black; }}</style>", unsafe_allow_html=True)
-    return st.selectbox(label, house_options)
+def title_case_category(series):
+    return series.fillna("").astype(str).str.replace("_", " ").str.replace("-", " ").str.title()
 
 # --- MAIN APP ---
 if uploaded_file is not None:
     try:
         df = load_and_clean(uploaded_file)
         df["Teacher"] = df["Teacher"].where(df["Teacher"].isin(PERMANENT_STAFF["Teacher"]), other=np.nan)
-        house_df = df[df["Reward"].str.contains("house", case=False, na=False)]
-        conduct_df = df[df["Reward"].str.contains("conduct", case=False, na=False)]
+        house_df = df[df["Reward"].str.contains("house", case=False, na=False)].copy()
+        conduct_df = df[df["Reward"].str.contains("conduct", case=False, na=False)].copy()
 
         # =========================
         # 🏠 HOUSE POINTS SUMMARY
@@ -130,12 +125,14 @@ if uploaded_file is not None:
         with col4:
             safe_plot(form_house, "Form", "House Points", "House Points by Form", "House Points", color="House", color_map=HOUSE_COLORS)
 
-        # --- 🏅 HOUSE CATEGORY FREQUENCY (FILTERABLE)
+        # --- 🏠 Category Frequency with Filters
         if not house_df.empty:
             st.markdown("### 🏅 House Point Category Frequency")
 
-            house_filter = st.selectbox("Filter by House:", options=["All"] + sorted([h for h in HOUSE_MAPPING.values() if h in df["House"].unique()]))
-            dept_filter = st.selectbox("Filter by Department:", options=["All"] + sorted(house_df["Dep"].dropna().unique().tolist()))
+            house_opts = ["All"] + [h for h in HOUSE_NAMES if h in house_df["House"].dropna().unique().tolist()]
+            house_filter = st.selectbox("Filter by House:", options=house_opts, key="house_cat_house")
+            dep_opts = ["All"] + sorted(house_df["Dep"].dropna().unique().tolist())
+            dept_filter = st.selectbox("Filter by Department:", options=dep_opts, key="house_cat_dep")
 
             filtered_house_df = house_df.copy()
             if house_filter != "All":
@@ -143,8 +140,20 @@ if uploaded_file is not None:
             if dept_filter != "All":
                 filtered_house_df = filtered_house_df[filtered_house_df["Dep"] == dept_filter]
 
-            house_cat = filtered_house_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
+            if house_filter != "All":
+                st.markdown(
+                    f"<div style='background-color:{HOUSE_COLORS[house_filter]};color:white;padding:4px;border-radius:4px;width:fit-content;'>{HOUSE_DOT[house_filter]} {house_filter} Selected</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown("<div style='background-color:#555;color:white;padding:4px;border-radius:4px;width:fit-content;'>🏫 All Houses Selected</div>", unsafe_allow_html=True)
+
+            house_cat = (
+                filtered_house_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
+            )
+            house_cat["Category"] = title_case_category(house_cat["Category"])
             house_cat = house_cat.sort_values("Count", ascending=True)
+
             fig_house_cat = px.bar(
                 house_cat, x="Count", y="Category", orientation="h",
                 text="Count", title="All House Categories by Frequency (Filtered)",
@@ -178,12 +187,14 @@ if uploaded_file is not None:
 
         safe_plot(form_conduct, "Form", "Conduct Points", "Conduct Points by Form", "Conduct Points", color="House", color_map=HOUSE_COLORS)
 
-        # --- ⚠️ CONDUCT CATEGORY FREQUENCY (FILTERABLE)
+        # --- ⚠️ Category Frequency with Filters
         if not conduct_df.empty:
             st.markdown("### ⚠️ Conduct Point Category Frequency")
 
-            house_filter_c = st.selectbox("Filter by House (Conduct):", options=["All"] + sorted([h for h in HOUSE_MAPPING.values() if h in df["House"].unique()]))
-            dept_filter_c = st.selectbox("Filter by Department (Conduct):", options=["All"] + sorted(conduct_df["Dep"].dropna().unique().tolist()))
+            house_opts_c = ["All"] + [h for h in HOUSE_NAMES if h in conduct_df["House"].dropna().unique().tolist()]
+            house_filter_c = st.selectbox("Filter by House (Conduct):", options=house_opts_c, key="cond_cat_house")
+            dep_opts_c = ["All"] + sorted(conduct_df["Dep"].dropna().unique().tolist())
+            dept_filter_c = st.selectbox("Filter by Department (Conduct):", options=dep_opts_c, key="cond_cat_dep")
 
             filtered_conduct_df = conduct_df.copy()
             if house_filter_c != "All":
@@ -191,8 +202,20 @@ if uploaded_file is not None:
             if dept_filter_c != "All":
                 filtered_conduct_df = filtered_conduct_df[filtered_conduct_df["Dep"] == dept_filter_c]
 
-            conduct_cat = filtered_conduct_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
+            if house_filter_c != "All":
+                st.markdown(
+                    f"<div style='background-color:{HOUSE_COLORS[house_filter_c]};color:white;padding:4px;border-radius:4px;width:fit-content;'>{HOUSE_DOT[house_filter_c]} {house_filter_c} Selected</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown("<div style='background-color:#555;color:white;padding:4px;border-radius:4px;width:fit-content;'>🏫 All Houses Selected</div>", unsafe_allow_html=True)
+
+            conduct_cat = (
+                filtered_conduct_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
+            )
+            conduct_cat["Category"] = title_case_category(conduct_cat["Category"])
             conduct_cat = conduct_cat.sort_values("Count", ascending=True)
+
             fig_conduct_cat = px.bar(
                 conduct_cat, x="Count", y="Category", orientation="h",
                 text="Count", title="All Conduct Categories by Frequency (Filtered)",
@@ -203,7 +226,7 @@ if uploaded_file is not None:
             st.plotly_chart(fig_conduct_cat, use_container_width=True)
 
         # =========================
-        # 🏆 LEADERBOARDS & STAFF
+        # 👩‍🏫 STAFF SUMMARY
         # =========================
         st.markdown("---")
         st.subheader("📅 Weekly Staff Summary (House Points)")
