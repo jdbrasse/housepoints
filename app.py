@@ -12,7 +12,7 @@ DEFAULT_WEEKLY_TARGET = 15
 HOUSE_MAPPING = {"B": "Brunel", "L": "Liddell", "D": "Dickens", "W": "Wilberforce"}
 HOUSE_COLORS = {"Brunel": "#FF0000", "Dickens": "#0000FF", "Liddell": "#FFD700", "Wilberforce": "#800080"}
 
-# --- EMBEDDED STAFF INITIALS (alphabetised from uploaded Excel) ---
+# --- EMBEDDED STAFF INITIALS (alphabetised list you supplied) ---
 PERMANENT_STAFF = pd.DataFrame({
     "Teacher": sorted([
         'ACA','AFO','AHU','AJL','AMA','AMD','APE','AZ','BJH','BW','CAH','CB','CD','CDE','CHO','CL','CLT','CSD','CST',
@@ -66,13 +66,13 @@ def safe_plot(data, x, y, title, text=None, orientation="v", color=None, color_m
     fig.update_layout(title=dict(font=dict(size=20)), xaxis_title=None, yaxis_title=None)
     st.plotly_chart(fig, use_container_width=True)
 
-# --- SMALL HELPER: header styles for house-coloured tables ---
+# --- Table header style helper (house-coloured headers) ---
 def header_style_for_house(house_name: str):
     bg = HOUSE_COLORS.get(house_name, "#333")
     text_color = "#000000" if house_name == "Liddell" else "#FFFFFF"
     return [{"selector": "th", "props": f"background-color: {bg}; color: {text_color};"}]
 
-# --- HIGHLIGHT STAFF SUMMARY ---
+# --- Staff highlight helper for weekly summary ---
 def highlight_staff_target(row):
     color = "#ccffcc" if row["On Target (≥15)"] == "✅ Yes" else "#ffcccc"
     return [f"background-color: {color}"] * len(row)
@@ -82,6 +82,7 @@ if uploaded_file is not None:
     try:
         df = load_and_clean(uploaded_file)
 
+        # Split into house vs conduct
         house_df = df[df["Reward"].str.contains("house", case=False, na=False)]
         conduct_df = df[df["Reward"].str.contains("conduct", case=False, na=False)]
 
@@ -109,6 +110,7 @@ if uploaded_file is not None:
             )
 
             house_points = house_df.groupby("House")["Points"].sum().reset_index()
+
             form_house = (
                 house_df.groupby(["Form","House"])["Points"].sum().reset_index()
                 .rename(columns={"Points":"House Points"})
@@ -239,19 +241,27 @@ if uploaded_file is not None:
         st.dataframe(styled_staff, use_container_width=True)
 
         # -------------------------
-        # INTERACTIVE LEADERBOARDS (unchanged)
+        # INTERACTIVE LEADERBOARDS (Top 15 overall + Top 10 per house + Top 10 per form)
         # -------------------------
         st.markdown("---")
-        st.subheader("🏆 Top 10 Students — Leaderboards")
+        st.subheader("🏆 Top Students — Leaderboards")
 
         lb_type = st.selectbox("Select leaderboard type:", ["House Points", "Conduct Points"])
 
         if lb_type == "House Points" and not house_df.empty:
+            # totals per student
             studs = (
                 house_df.groupby(["Pupil Name", "Form", "House"], as_index=False)["Points"].sum()
                 .rename(columns={"Points": "House Points"})
             )
 
+            # Top 15 overall
+            st.markdown("### 🥇 Top 15 Students — Overall (House Points)")
+            top15_hp = studs.sort_values("House Points", ascending=False).head(15)
+            st.dataframe(top15_hp[["Pupil Name", "Form", "House", "House Points"]],
+                         use_container_width=True)
+
+            # Per House (Top 10)
             st.markdown("### 🏠 Top 10 Students per House (House Points)")
             for house in ["Brunel", "Dickens", "Liddell", "Wilberforce"]:
                 hdf = studs[studs["House"] == house].sort_values("House Points", ascending=False).head(10)
@@ -265,9 +275,11 @@ if uploaded_file is not None:
                 with st.expander(f"{house} — Top 10"):
                     st.dataframe(styled, use_container_width=True)
 
+            # Per Form (Top 10)
             st.markdown("### 🏫 Top 10 Students per Form (House Points)")
             for form_name, g in studs.groupby("Form"):
                 g_sorted = g.sort_values("House Points", ascending=False).head(10)
+                # color header by most common house in that form
                 house_mode = g["House"].mode().iloc[0] if not g["House"].mode().empty else None
                 styled = (
                     g_sorted[["Pupil Name", "Form", "House", "House Points"]]
@@ -283,6 +295,13 @@ if uploaded_file is not None:
                 .rename(columns={"Points": "Conduct Points"})
             )
 
+            # Top 15 overall
+            st.markdown("### 🥇 Top 15 Students — Overall (Conduct Points)")
+            top15_cp = studs_c.sort_values("Conduct Points", ascending=False).head(15)
+            st.dataframe(top15_cp[["Pupil Name", "Form", "House", "Conduct Points"]],
+                         use_container_width=True)
+
+            # Per House (Top 10)
             st.markdown("### 🏠 Top 10 Students per House (Conduct Points)")
             for house in ["Brunel", "Dickens", "Liddell", "Wilberforce"]:
                 hdf = studs_c[studs_c["House"] == house].sort_values("Conduct Points", ascending=False).head(10)
@@ -296,6 +315,7 @@ if uploaded_file is not None:
                 with st.expander(f"{house} — Top 10"):
                     st.dataframe(styled, use_container_width=True)
 
+            # Per Form (Top 10)
             st.markdown("### 🏫 Top 10 Students per Form (Conduct Points)")
             for form_name, g in studs_c.groupby("Form"):
                 g_sorted = g.sort_values("Conduct Points", ascending=False).head(10)
@@ -307,6 +327,11 @@ if uploaded_file is not None:
                 )
                 with st.expander(f"Form {form_name} — Top 10"):
                     st.dataframe(styled, use_container_width=True)
+
+        if lb_type == "House Points" and house_df.empty:
+            st.info("No house points available for leaderboards.")
+        if lb_type == "Conduct Points" and conduct_df.empty:
+            st.info("No conduct points available for leaderboards.")
 
     except Exception as e:
         st.error(f"Error loading CSV: {e}")
