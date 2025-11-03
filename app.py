@@ -12,7 +12,6 @@ st.write("Upload your weekly CSV file below to generate the full analysis.")
 DEFAULT_WEEKLY_TARGET = 15
 HOUSE_MAPPING = {"B": "Brunel", "L": "Liddell", "D": "Dickens", "W": "Wilberforce"}
 HOUSE_COLORS = {"Brunel": "#FF0000", "Dickens": "#0000FF", "Liddell": "#FFD700", "Wilberforce": "#800080"}
-HOUSE_DOT = {"Brunel": "🔴", "Dickens": "🔵", "Liddell": "🟡", "Wilberforce": "🟣"}
 HOUSE_NAMES = list(HOUSE_COLORS.keys())
 
 # --- SIDEBAR ---
@@ -136,7 +135,7 @@ if uploaded_file is not None:
 
             house_cat = filtered_house_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
             house_cat["Category"] = title_case_category(house_cat["Category"])
-            house_cat = house_cat.sort_values("Count", ascending=False)  # DESCENDING order
+            house_cat = house_cat.sort_values("Count", ascending=False)
 
             fig_house_cat = px.bar(
                 house_cat,
@@ -191,7 +190,7 @@ if uploaded_file is not None:
 
             conduct_cat = filtered_conduct_df.groupby("Category")["Points"].count().reset_index().rename(columns={"Points":"Count"})
             conduct_cat["Category"] = title_case_category(conduct_cat["Category"])
-            conduct_cat = conduct_cat.sort_values("Count", ascending=False)  # DESCENDING order
+            conduct_cat = conduct_cat.sort_values("Count", ascending=False)
 
             fig_conduct_cat = px.bar(
                 conduct_cat,
@@ -221,7 +220,7 @@ if uploaded_file is not None:
             for house in HOUSE_NAMES:
                 hdf = studs[studs["House"] == house].sort_values("House Points", ascending=False).head(15)
                 if not hdf.empty:
-                    with st.expander(f"{HOUSE_DOT[house]} {house} — Top 15"):
+                    with st.expander(f"{house} — Top 15"):
                         styled = hdf[["Pupil Name","Form","House","House Points"]].style.set_table_styles(header_style_for_house(house)).hide(axis="index")
                         st.dataframe(styled, use_container_width=True)
 
@@ -229,7 +228,7 @@ if uploaded_file is not None:
             for form, g in studs.groupby("Form"):
                 g_sorted = g.sort_values("House Points", ascending=False).head(10)
                 house_mode = g["House"].mode().iloc[0] if not g["House"].mode().empty else ""
-                with st.expander(f"{HOUSE_DOT.get(house_mode,'')} Form {form} — Top 10"):
+                with st.expander(f"Form {form} — Top 10"):
                     styled = g_sorted[["Pupil Name","Form","House","House Points"]].style.set_table_styles(header_style_for_house(house_mode)).hide(axis="index")
                     st.dataframe(styled, use_container_width=True)
 
@@ -242,7 +241,7 @@ if uploaded_file is not None:
             for house in HOUSE_NAMES:
                 hdf = studs_c[studs_c["House"] == house].sort_values("Conduct Points", ascending=False).head(15)
                 if not hdf.empty:
-                    with st.expander(f"{HOUSE_DOT[house]} {house} — Top 15"):
+                    with st.expander(f"{house} — Top 15"):
                         styled = hdf[["Pupil Name","Form","House","Conduct Points"]].style.set_table_styles(header_style_for_house(house)).hide(axis="index")
                         st.dataframe(styled, use_container_width=True)
 
@@ -250,7 +249,7 @@ if uploaded_file is not None:
             for form, g in studs_c.groupby("Form"):
                 g_sorted = g.sort_values("Conduct Points", ascending=False).head(10)
                 house_mode = g["House"].mode().iloc[0] if not g["House"].mode().empty else ""
-                with st.expander(f"{HOUSE_DOT.get(house_mode,'')} Form {form} — Top 10"):
+                with st.expander(f"Form {form} — Top 10"):
                     styled = g_sorted[["Pupil Name","Form","House","Conduct Points"]].style.set_table_styles(header_style_for_house(house_mode)).hide(axis="index")
                     st.dataframe(styled, use_container_width=True)
 
