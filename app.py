@@ -69,10 +69,8 @@ def safe_plot(data, x, y, title, text=None, orientation="v", color=None, color_m
     if data.empty:
         st.info(f"No data available for {title}")
         return
-    fig = px.bar(
-        data, x=x, y=y, text=text, orientation=orientation, title=title,
-        color=color, color_discrete_map=color_map
-    )
+    fig = px.bar(data, x=x, y=y, text=text, orientation=orientation, title=title,
+                 color=color, color_discrete_map=color_map)
     fig.update_traces(texttemplate="%{text}", textposition="outside")
     fig.update_layout(title=dict(font=dict(size=20)), xaxis_title=None, yaxis_title=None)
     st.plotly_chart(fig, use_container_width=True)
@@ -85,14 +83,6 @@ def header_style_for_house(house_name: str):
 def highlight_staff_target(row):
     color = "#ccffcc" if row["On Target (≥Target)"] == "✅ Yes" else "#ffcccc"
     return [f"background-color: {color}"] * len(row)
-
-def house_banner(text: str, house: str):
-    color = HOUSE_COLORS.get(house, "#444")
-    fg = "#000000" if house == "Liddell" else "#FFFFFF"
-    st.markdown(
-        f"<div style='background-color:{color};padding:6px 10px;border-radius:6px;color:{fg};font-weight:600'>{text}</div>",
-        unsafe_allow_html=True,
-    )
 
 # --- MAIN APP ---
 if uploaded_file is not None:
@@ -131,6 +121,22 @@ if uploaded_file is not None:
         with col4:
             safe_plot(form_house, "Form", "House Points", "House Points by Form", "House Points", color="House", color_map=HOUSE_COLORS)
 
+        # --- 🏅 Reward Values Frequency (House Points)
+        if not house_df.empty:
+            st.markdown("### 🏅 Reward Values Frequency (House Points)")
+            reward_freq = house_df.groupby("Reward")["Points"].count().reset_index().rename(columns={"Points":"Count"})
+            fig_reward = px.bar(
+                reward_freq.sort_values("Count"),
+                x="Count", y="Reward",
+                orientation="h",
+                text="Count",
+                title="Most Common House Rewards",
+                color_discrete_sequence=["#FF0000"]
+            )
+            fig_reward.update_traces(textposition="outside")
+            fig_reward.update_layout(showlegend=False, yaxis_title=None, xaxis_title=None)
+            st.plotly_chart(fig_reward, use_container_width=True)
+
         # =========================
         # ⚠️ CONDUCT POINTS SUMMARY
         # =========================
@@ -155,12 +161,27 @@ if uploaded_file is not None:
 
         safe_plot(form_conduct, "Form", "Conduct Points", "Conduct Points by Form", "Conduct Points", color="House", color_map=HOUSE_COLORS)
 
+        # --- ⚠️ Conduct Values Frequency
+        if not conduct_df.empty:
+            st.markdown("### ⚠️ Conduct Values Frequency (Conduct Points)")
+            conduct_freq = conduct_df.groupby("Reward")["Points"].count().reset_index().rename(columns={"Points":"Count"})
+            fig_conduct = px.bar(
+                conduct_freq.sort_values("Count"),
+                x="Count", y="Reward",
+                orientation="h",
+                text="Count",
+                title="Most Common Conduct Categories",
+                color_discrete_sequence=["#800080"]
+            )
+            fig_conduct.update_traces(textposition="outside")
+            fig_conduct.update_layout(showlegend=False, yaxis_title=None, xaxis_title=None)
+            st.plotly_chart(fig_conduct, use_container_width=True)
+
         # =========================
         # 🏆 LEADERBOARDS
         # =========================
         st.markdown("---")
         st.subheader("🏆 Student Leaderboards")
-
         lb_type = st.selectbox("Select leaderboard type:", ["House Points", "Conduct Points"])
 
         if lb_type == "House Points":
