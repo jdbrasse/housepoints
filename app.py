@@ -8,7 +8,7 @@ st.set_page_config(page_title="House & Conduct Points Analysis", layout="wide")
 st.title("🏫 House & Conduct Points Analysis Dashboard")
 st.write("Upload your weekly CSV file below to generate the full analysis.")
 
-# --- HOUSE & COLOUR SETTINGS ---
+# --- HOUSE SETTINGS ---
 DEFAULT_WEEKLY_TARGET = 15
 HOUSE_MAPPING = {"B": "Brunel", "L": "Liddell", "D": "Dickens", "W": "Wilberforce"}
 HOUSE_COLORS = {"Brunel": "#FF0000", "Dickens": "#0000FF", "Liddell": "#FFD700", "Wilberforce": "#800080"}
@@ -21,10 +21,10 @@ with st.sidebar:
     for house, color in HOUSE_COLORS.items():
         st.markdown(
             f"<div style='background-color:{color};padding:4px;border-radius:4px;color:white;text-align:center;'>{HOUSE_DOT[house]} {house}</div>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
-# --- EMBEDDED STAFF LIST (from your Excel, alphabetised) ---
+# --- EMBEDDED STAFF LIST (alphabetised) ---
 PERMANENT_STAFF = pd.DataFrame({
     "Teacher": sorted([
         'ACA','AFO','AHU','AJL','AMA','AMD','APE','AZ','BJH','BW','CAH','CB','CD','CDE','CHO','CL','CLT','CSD','CST',
@@ -64,7 +64,7 @@ def load_and_clean(file):
     df["Year"] = df["Year"].astype(str).str.strip()
     return df
 
-# --- STYLE HELPERS ---
+# --- STYLES & HELPERS ---
 def safe_plot(data, x, y, title, text=None, orientation="v", color=None, color_map=None):
     if data.empty:
         st.info(f"No data available for {title}")
@@ -91,129 +91,69 @@ def house_banner(text: str, house: str):
     fg = "#000000" if house == "Liddell" else "#FFFFFF"
     st.markdown(
         f"<div style='background-color:{color};padding:6px 10px;border-radius:6px;color:{fg};font-weight:600'>{text}</div>",
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
 # --- MAIN APP ---
 if uploaded_file is not None:
     try:
         df = load_and_clean(uploaded_file)
-        # Only count/keep rows for embedded staff
         df["Teacher"] = df["Teacher"].where(df["Teacher"].isin(PERMANENT_STAFF["Teacher"]), other=np.nan)
-
-        # Split data
-        house_df = df[df["Reward"].str.contains("house", case=False, na=False)].copy()
-        conduct_df = df[df["Reward"].str.contains("conduct", case=False, na=False)].copy()
+        house_df = df[df["Reward"].str.contains("house", case=False, na=False)]
+        conduct_df = df[df["Reward"].str.contains("conduct", case=False, na=False)]
 
         # =========================
         # 🏠 HOUSE POINTS SUMMARY
         # =========================
         st.subheader("🏠 House Points Summary")
 
-        staff_house = (
-            house_df.groupby("Teacher", dropna=True)["Points"].sum().reset_index()
-            .rename(columns={"Points": "House Points This Week"})
-        ) if not house_df.empty else pd.DataFrame(columns=["Teacher","House Points This Week"])
-        staff_house = PERMANENT_STAFF.merge(staff_house, on="Teacher", how="left").fillna(0)
+        staff_house = PERMANENT_STAFF.merge(
+            house_df.groupby("Teacher")["Points"].sum().reset_index().rename(columns={"Points":"House Points This Week"}),
+            on="Teacher", how="left"
+        ).fillna(0)
         staff_house["House Points This Week"] = staff_house["House Points This Week"].astype(int)
         staff_house = staff_house.sort_values("House Points This Week", ascending=False)
 
-        student_house = (
-            house_df.groupby(["Pupil Name", "Form", "Year", "House"])["Points"]
-            .sum().reset_index().rename(columns={"Points": "House Points"})
-        ) if not house_df.empty else pd.DataFrame(columns=["Pupil Name","Form","Year","House","House Points"])
-
-        house_points = (
-            house_df.groupby("House")["Points"].sum().reset_index()
-        ) if not house_df.empty else pd.DataFrame(columns=["House","Points"])
-
-        form_house = (
-            house_df.groupby(["Form","House"])["Points"].sum().reset_index()
-            .rename(columns={"Points": "House Points"})
-        ) if not house_df.empty else pd.DataFrame(columns=["Form","House","House Points"])
+        student_house = house_df.groupby(["Pupil Name","Form","Year","House"])["Points"].sum().reset_index().rename(columns={"Points":"House Points"})
+        house_points = house_df.groupby("House")["Points"].sum().reset_index()
+        form_house = house_df.groupby(["Form","House"])["Points"].sum().reset_index().rename(columns={"Points":"House Points"})
 
         col1, col2 = st.columns(2)
         with col1:
-            safe_plot(
-                staff_house.head(15),
-                x="Teacher", y="House Points This Week",
-                text="House Points This Week",
-                title="Top 15 Staff (House Points)"
-            )
+            safe_plot(staff_house.head(15), "Teacher", "House Points This Week", "Top 15 Staff (House Points)", "House Points This Week")
         with col2:
-            safe_plot(
-                student_house.sort_values("House Points", ascending=False).head(15),
-                x="Pupil Name", y="House Points", text="House Points",
-                color="House", color_map=HOUSE_COLORS,
-                title="Top 15 Students (House Points)"
-            )
+            safe_plot(student_house.sort_values("House Points", ascending=False).head(15),
+                      "Pupil Name", "House Points", "Top 15 Students (House Points)", "House Points", color="House", color_map=HOUSE_COLORS)
 
         col3, col4 = st.columns(2)
         with col3:
-            fig_house = px.bar(
-                house_points, x="House", y="Points", text="Points",
-                color="House", color_discrete_map=HOUSE_COLORS, title="House Points by House"
-            )
-            fig_house.update_layout(showlegend=False)
-            fig_house.update_traces(texttemplate="%{text}", textposition="outside")
-            st.plotly_chart(fig_house, use_container_width=True)
+            safe_plot(house_points, "House", "Points", "House Points by House", "Points", color="House", color_map=HOUSE_COLORS)
         with col4:
-            fig_form_house = px.bar(
-                form_house, x="Form", y="House Points", text="House Points",
-                color="House", color_discrete_map=HOUSE_COLORS, title="House Points by Form"
-            )
-            fig_form_house.update_layout(showlegend=False)
-            fig_form_house.update_traces(texttemplate="%{text}", textposition="outside")
-            st.plotly_chart(fig_form_house, use_container_width=True)
+            safe_plot(form_house, "Form", "House Points", "House Points by Form", "House Points", color="House", color_map=HOUSE_COLORS)
 
         # =========================
         # ⚠️ CONDUCT POINTS SUMMARY
         # =========================
         st.subheader("⚠️ Conduct Points Summary")
 
-        # New: Top 15 Staff (Conduct) — matches Top 15 Staff (House) layout
-        staff_conduct = (
-            conduct_df.groupby("Teacher", dropna=True)["Points"].count().reset_index()
-            .rename(columns={"Points": "Conduct Points This Week"})
-        ) if not conduct_df.empty else pd.DataFrame(columns=["Teacher","Conduct Points This Week"])
-        staff_conduct = PERMANENT_STAFF.merge(staff_conduct, on="Teacher", how="left").fillna(0)
+        staff_conduct = PERMANENT_STAFF.merge(
+            conduct_df.groupby("Teacher")["Points"].count().reset_index().rename(columns={"Points":"Conduct Points This Week"}),
+            on="Teacher", how="left"
+        ).fillna(0)
         staff_conduct["Conduct Points This Week"] = staff_conduct["Conduct Points This Week"].astype(int)
         staff_conduct = staff_conduct.sort_values("Conduct Points This Week", ascending=False)
 
+        studs_c = conduct_df.groupby(["Pupil Name","Form","House"])["Points"].count().reset_index().rename(columns={"Points":"Conduct Points"})
+        form_conduct = conduct_df.groupby(["Form","House"])["Points"].count().reset_index().rename(columns={"Points":"Conduct Points"})
+
         col5, col6 = st.columns(2)
         with col5:
-            safe_plot(
-                staff_conduct.head(15),
-                x="Teacher", y="Conduct Points This Week",
-                text="Conduct Points This Week",
-                title="Top 15 Staff (Conduct Points)"
-            )
-
-        # Students + Forms for Conduct
-        studs_c = (
-            conduct_df.groupby(["Pupil Name","Form","House"], as_index=False)["Points"].count()
-            .rename(columns={"Points":"Conduct Points"})
-        ) if not conduct_df.empty else pd.DataFrame(columns=["Pupil Name","Form","House","Conduct Points"])
-
-        form_conduct = (
-            conduct_df.groupby(["Form","House"])["Points"].count().reset_index()
-            .rename(columns={"Points":"Conduct Points"})
-        ) if not conduct_df.empty else pd.DataFrame(columns=["Form","House","Conduct Points"])
-
+            safe_plot(staff_conduct.head(15), "Teacher", "Conduct Points This Week", "Top 15 Staff (Conduct Points)", "Conduct Points This Week")
         with col6:
-            safe_plot(
-                studs_c.sort_values("Conduct Points", ascending=False).head(15),
-                x="Pupil Name", y="Conduct Points", text="Conduct Points",
-                color="House", color_map=HOUSE_COLORS, title="Top 15 Students (Conduct Points)"
-            )
+            safe_plot(studs_c.sort_values("Conduct Points", ascending=False).head(15),
+                      "Pupil Name", "Conduct Points", "Top 15 Students (Conduct Points)", "Conduct Points", color="House", color_map=HOUSE_COLORS)
 
-        fig_form_conduct = px.bar(
-            form_conduct, x="Form", y="Conduct Points", text="Conduct Points",
-            color="House", color_discrete_map=HOUSE_COLORS, title="Conduct Points by Form"
-        )
-        fig_form_conduct.update_layout(showlegend=False)
-        fig_form_conduct.update_traces(texttemplate="%{text}", textposition="outside")
-        st.plotly_chart(fig_form_conduct, use_container_width=True)
+        safe_plot(form_conduct, "Form", "Conduct Points", "Conduct Points by Form", "Conduct Points", color="House", color_map=HOUSE_COLORS)
 
         # =========================
         # 🏆 LEADERBOARDS
@@ -224,11 +164,7 @@ if uploaded_file is not None:
         lb_type = st.selectbox("Select leaderboard type:", ["House Points", "Conduct Points"])
 
         if lb_type == "House Points":
-            studs = (
-                house_df.groupby(["Pupil Name", "Form", "House"], as_index=False)["Points"].sum()
-                .rename(columns={"Points": "House Points"})
-            )
-
+            studs = house_df.groupby(["Pupil Name","Form","House"], as_index=False)["Points"].sum().rename(columns={"Points":"House Points"})
             st.markdown("### 🥇 Top 15 Students — Overall (House Points)")
             st.dataframe(studs.sort_values("House Points", ascending=False).head(15), use_container_width=True)
 
@@ -236,24 +172,17 @@ if uploaded_file is not None:
             for house in HOUSE_MAPPING.values():
                 hdf = studs[studs["House"] == house].sort_values("House Points", ascending=False).head(10)
                 if not hdf.empty:
-                    styled = (
-                        hdf[["Pupil Name", "Form", "House", "House Points"]]
-                        .style.set_table_styles(header_style_for_house(house)).hide(axis="index")
-                    )
                     with st.expander(f"{HOUSE_DOT[house]} {house} — Top 10"):
+                        styled = hdf[["Pupil Name","Form","House","House Points"]].style.set_table_styles(header_style_for_house(house)).hide(axis="index")
                         st.dataframe(styled, use_container_width=True)
 
             st.markdown("### 🏫 Top 10 Students per Form (House Points)")
-            # Group forms by their dominant house for a colour banner
             for form, g in studs.groupby("Form"):
                 g_sorted = g.sort_values("House Points", ascending=False).head(10)
                 house_mode = g["House"].mode().iloc[0] if not g["House"].mode().empty else ""
-                house_banner(f"Form {form} — Top 10", house_mode or "")
-                styled = (
-                    g_sorted[["Pupil Name", "Form", "House", "House Points"]]
-                    .style.set_table_styles(header_style_for_house(house_mode)).hide(axis="index")
-                )
-                st.dataframe(styled, use_container_width=True)
+                with st.expander(f"{HOUSE_DOT.get(house_mode,'')} {house_mode} — Form {form}"):
+                    styled = g_sorted[["Pupil Name","Form","House","House Points"]].style.set_table_styles(header_style_for_house(house_mode)).hide(axis="index")
+                    st.dataframe(styled, use_container_width=True)
 
         else:
             st.markdown("### 🥇 Top 15 Students — Overall (Conduct Points)")
@@ -263,43 +192,30 @@ if uploaded_file is not None:
             for house in HOUSE_MAPPING.values():
                 hdf = studs_c[studs_c["House"] == house].sort_values("Conduct Points", ascending=False).head(10)
                 if not hdf.empty:
-                    styled = (
-                        hdf[["Pupil Name", "Form", "House", "Conduct Points"]]
-                        .style.set_table_styles(header_style_for_house(house)).hide(axis="index")
-                    )
                     with st.expander(f"{HOUSE_DOT[house]} {house} — Top 10"):
+                        styled = hdf[["Pupil Name","Form","House","Conduct Points"]].style.set_table_styles(header_style_for_house(house)).hide(axis="index")
                         st.dataframe(styled, use_container_width=True)
 
             st.markdown("### 🏫 Top 10 Students per Form (Conduct Points)")
             for form, g in studs_c.groupby("Form"):
                 g_sorted = g.sort_values("Conduct Points", ascending=False).head(10)
                 house_mode = g["House"].mode().iloc[0] if not g["House"].mode().empty else ""
-                house_banner(f"Form {form} — Top 10", house_mode or "")
-                styled = (
-                    g_sorted[["Pupil Name", "Form", "House", "Conduct Points"]]
-                    .style.set_table_styles(header_style_for_house(house_mode)).hide(axis="index")
-                )
-                st.dataframe(styled, use_container_width=True)
+                with st.expander(f"{HOUSE_DOT.get(house_mode,'')} {house_mode} — Form {form}"):
+                    styled = g_sorted[["Pupil Name","Form","House","Conduct Points"]].style.set_table_styles(header_style_for_house(house_mode)).hide(axis="index")
+                    st.dataframe(styled, use_container_width=True)
 
         # =========================
-        # 👩‍🏫 STAFF SUMMARY (BOTTOM)
+        # 👩‍🏫 STAFF SUMMARY
         # =========================
         st.markdown("---")
         st.subheader("📅 Weekly Staff Summary (House Points)")
-        summary_df = PERMANENT_STAFF.merge(
-            staff_house[["Teacher", "House Points This Week"]], on="Teacher", how="left"
-        ).fillna(0)
+        summary_df = PERMANENT_STAFF.merge(staff_house[["Teacher","House Points This Week"]], on="Teacher", how="left").fillna(0)
         summary_df["House Points This Week"] = summary_df["House Points This Week"].astype(int)
-        summary_df["On Target (≥Target)"] = np.where(
-            summary_df["House Points This Week"] >= int(target_input), "✅ Yes", "⚠️ No"
-        )
-        styled_staff = summary_df.sort_values("House Points This Week", ascending=False).style.apply(
-            highlight_staff_target, axis=1
-        )
+        summary_df["On Target (≥Target)"] = np.where(summary_df["House Points This Week"] >= int(target_input), "✅ Yes", "⚠️ No")
+        styled_staff = summary_df.sort_values("House Points This Week", ascending=False).style.apply(highlight_staff_target, axis=1)
         st.dataframe(styled_staff, use_container_width=True)
 
     except Exception as e:
         st.error(f"Error loading CSV: {e}")
-
 else:
     st.info("Please upload your CSV file to begin analysis.")
